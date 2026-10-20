@@ -1,6 +1,17 @@
-import type { EventFilter, EventStatus } from '@/lib/db/types';
+import type { EventFilter, EventStatus, EventType, RoleCategory } from '@/lib/db/types';
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; message: string };
+
+// Value lists that mirror enums in openapi.yaml. The `Same` checks make `npm run typecheck` fail
+// if a list and the contract ever disagree, in either direction.
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+
+export const EVENT_TYPES = ['wedding', 'conference', 'concert', 'corporate', 'other'] as const;
+export const CATEGORIES = [
+  'accommodation', 'campus', 'catering', 'cleaning', 'electrical', 'events', 'plumbing', 'security', 'tutoring',
+] as const;
+export const _eventTypesMatchContract: Same<(typeof EVENT_TYPES)[number], EventType> = true;
+export const _categoriesMatchContract: Same<(typeof CATEGORIES)[number], RoleCategory> = true;
 
 /** Kenya's 47 counties, official names in title case. */
 export const COUNTIES = [
@@ -183,4 +194,98 @@ export function parseCredentials(body: unknown): Parsed<CredentialsInput> {
   const password = text(fields.value, 'password', { max: 128, trim: false });
   if (!password.ok) return password;
   return { ok: true, value: { email: address.value, password: password.value } };
+}
+
+// ---- events and roles --------------------------------------------------------------------------
+
+/** A required county, in any letter case, returned in its official spelling. */
+function county(fields: Fields): Parsed<string> {
+  const typed = text(fields, 'county', { max: 50 });
+  if (!typed.ok) return typed;
+  const official = findCounty(typed.value);
+  return official
+    ? { ok: true, value: official }
+    : { ok: false, message: "county must be one of Kenya's 47 counties, for example Nairobi" };
+}
+
+export interface NewEventInput {
+  name: string;
+  type: EventType;
+  county: string;
+  area: string;
+  venue: string;
+  startsAt: Date;
+  endsAt: Date;
+  expectedGuests: number;
+}
+
+/** POST /api/events. The organiser and the status (upcoming) are never taken from the body. */
+export function parseNewEvent(body: unknown, now: Date = new Date()): Parsed<NewEventInput> {
+  const fields = readFields(body, ['name', 'type', 'county', 'area', 'venue', 'startsAt', 'endsAt', 'expectedGuests']);
+  if (!fields.ok) return fields;
+  const f = fields.value;
+  const name = text(f, 'name', { max: 120 });
+  if (!name.ok) return name;
+  const type = oneOf(f, 'type', EVENT_TYPES);
+  if (!type.ok) return type;
+  const countyName = county(f);
+  if (!countyName.ok) return countyName;
+  const area = text(f, 'area', { max: 80 });
+  if (!area.ok) return area;
+  const venue = text(f, 'venue', { max: 120 });
+  if (!venue.ok) return venue;
+  const startsAt = futureDateTime(f, 'startsAt', now);
+  if (!startsAt.ok) return startsAt;
+  const endsAt = dateTime(f, 'endsAt');
+  if (!endsAt.ok) return endsAt;
+  if (endsAt.value.getTime() <= startsAt.value.getTime()) {
+    return { ok: false, message: 'endsAt must be after startsAt' };
+  }
+  const expectedGuests = whole(f, 'expectedGuests', { min: 1, max: 100_000 });
+  if (!expectedGuests.ok) return expectedGuests;
+  return {
+    ok: true,
+    value: {
+      name: name.value, type: type.value, county: countyName.value, area: area.value, venue: venue.value,
+      startsAt: startsAt.value, endsAt: endsAt.value, expectedGuests: expectedGuests.value,
+    },
+  };
+}
+
+export interface NewRoleInput {
+  title: string;
+  category: RoleCategory;
+  headcount: number;
+  shiftStart: Date;
+  shiftEnd: Date;
+  payPerShift: number;
+}
+
+/** POST /api/events/{eventId}/roles. `filled` always starts at 0 and is never taken from the body. */
+export function parseNewRole(body: unknown, now: Date = new Date()): Parsed<NewRoleInput> {
+  const fields = readFields(body, ['title', 'category', 'headcount', 'shiftStart', 'shiftEnd', 'payPerShift']);
+  if (!fields.ok) return fields;
+  const f = fields.value;
+  const title = text(f, 'title', { max: 80 });
+  if (!title.ok) return title;
+  const category = oneOf(f, 'category', CATEGORIES);
+  if (!category.ok) return category;
+  const headcount = whole(f, 'headcount', { min: 1, max: 1000 });
+  if (!headcount.ok) return headcount;
+  const shiftStart = futureDateTime(f, 'shiftStart', now);
+  if (!shiftStart.ok) return shiftStart;
+  const shiftEnd = dateTime(f, 'shiftEnd');
+  if (!shiftEnd.ok) return shiftEnd;
+  if (shiftEnd.value.getTime() <= shiftStart.value.getTime()) {
+    return { ok: false, message: 'shiftEnd must be after shiftStart' };
+  }
+  const payPerShift = whole(f, 'payPerShift', { min: 0, max: 100_000 });
+  if (!payPerShift.ok) return payPerShift;
+  return {
+    ok: true,
+    value: {
+      title: title.value, category: category.value, headcount: headcount.value,
+      shiftStart: shiftStart.value, shiftEnd: shiftEnd.value, payPerShift: payPerShift.value,
+    },
+  };
 }

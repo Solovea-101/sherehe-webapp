@@ -130,6 +130,7 @@ async function runCase(
   let payload: string | undefined = c.rawBody;
   try {
     // A case may use values captured by earlier ones; if one is missing, say so instead of crashing.
+    await c.before?.(env);
     url = typeof c.url === 'function' ? c.url(env.ctx) : c.url;
     headers = { Accept: 'application/json', ...(c.headers?.(env.ctx) ?? {}) };
     if (payload === undefined && c.body !== undefined) {

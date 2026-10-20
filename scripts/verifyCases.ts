@@ -34,6 +34,8 @@ export interface Case {
   /** Raw text to send instead of a body, for malformed JSON. */
   rawBody?: string;
   headers?: (ctx: Ctx) => { [name: string]: string };
+  /** Runs just before the request, e.g. to create a fixture that depends on captured values. */
+  before?: (env: Env) => Promise<void>;
   expectStatus: number;
   /** Response headers that must be present, as exact text or a pattern. */
   expectHeaders?: { [name: string]: string | RegExp };
@@ -57,6 +59,13 @@ export const need = (ctx: Ctx, key: string): string => {
 };
 
 const asArray = (body: unknown): JsonObject[] => (Array.isArray(body) ? body.filter(isObject) : []);
+
+/** An ISO 8601 UTC time (Z, no milliseconds) n days ahead, at the given hour. */
+export const inDays = (days: number, hour = 10): string => {
+  const d = new Date(Date.now() + days * 86_400_000);
+  d.setUTCHours(hour, 0, 0, 0);
+  return d.toISOString().replace(/\.\d{3}Z$/, 'Z');
+};
 
 const as = (tokenKey: string) => (ctx: Ctx) => ({ Authorization: `Bearer ${need(ctx, tokenKey)}` });
 
@@ -102,6 +111,15 @@ export async function buildCases(env: Env): Promise<Case[]> {
   const stranger = { email: 'verify.stranger@example.com', name: 'Verify Stranger', password: 'stranger password 123' };
   const noUser = (email: string) => async ({ store: s }: Env) =>
     (await s.users.findByEmail(email)) ? [`an account for ${email} was created by a rejected request`] : [];
+
+  const newEvent = {
+    name: 'Verification gala', type: 'wedding', county: 'nakuru', area: 'Milimani', venue: 'Verification Hall',
+    startsAt: inDays(90), endsAt: inDays(90, 20), expectedGuests: 150,
+  };
+  const newRole = {
+    title: 'Verification ushers', category: 'events', headcount: 4, shiftStart: inDays(90, 8), shiftEnd: inDays(90, 21), payPerShift: 1300,
+  };
+  const eventUrl = (suffix = '') => (ctx: Ctx) => `/api/events/${need(ctx, 'eventId')}${suffix}`;
 
   return [
     // ---- K1: GET /api/events -----------------------------------------------------------------
@@ -211,5 +229,77 @@ export async function buildCases(env: Env): Promise<Case[]> {
       } },
     { operation: 'POST /api/auth/logout', label: 'the same token again', url: '/api/auth/logout', headers: as('loginToken'), expectStatus: 401, unchanged: true },
     { operation: 'POST /api/auth/logout', label: 'no token', url: '/api/auth/logout', expectStatus: 401, unchanged: true },
+
+    // ---- O2: POST /api/events ----------------------------------------------------------------
+    { operation: 'POST /api/events', label: 'an organiser creates an event', url: '/api/events', headers: as('ownerToken'), body: newEvent,
+      expectStatus: 201, expectHeaders: { location: /^\/api\/events\/evt_\d+$/ },
+      check: all(field('status', 'upcoming'), field('county', 'Nakuru'), field('name', newEvent.name)),
+      capture: (body, ctx) => {
+        if (isObject(body)) ctx.eventId = String(body.id);
+      },
+      after: async ({ ctx, get }, body) => {
+        // read back: the event is there by id, and in the county list partners read
+        const one = await get(`/api/events/${need(ctx, 'eventId')}`);
+        const list = await get('/api/events?status=upcoming&county=Nakuru');
+        return [
+          ...(JSON.stringify(one.body) === JSON.stringify(body) ? [] : ['GET /api/events/{id} does not return what was created']),
+          ...(asArray(list.body).some((e) => e.id === ctx.eventId) ? [] : ['the new event is missing from the county list']),
+        ];
+      } },
+    { operation: 'POST /api/events', label: 'no login', url: '/api/events', body: newEvent, expectStatus: 401, unchanged: true,
+      expectHeaders: { 'www-authenticate': 'Bearer' } },
+    { operation: 'POST /api/events', label: 'start date in the past', url: '/api/events', headers: as('ownerToken'),
+      body: { ...newEvent, startsAt: '2020-01-01T10:00:00Z' }, expectStatus: 400, unchanged: true, check: messageContains('startsAt must be in the future') },
+    { operation: 'POST /api/events', label: 'county that does not exist', url: '/api/events', headers: as('ownerToken'),
+      body: { ...newEvent, county: 'Narnia' }, expectStatus: 400, unchanged: true, check: messageContains('47 counties') },
+    { operation: 'POST /api/events', label: 'tries to set the status', url: '/api/events', headers: as('ownerToken'),
+      body: { ...newEvent, status: 'completed' }, expectStatus: 400, unchanged: true, check: messageContains('Unknown field "status"') },
+    { operation: 'POST /api/events', label: 'guests sent as text', url: '/api/events', headers: as('ownerToken'),
+      body: { ...newEvent, expectedGuests: '150' }, expectStatus: 400, unchanged: true, check: messageContains('expectedGuests must be a whole number') },
+
+    // ---- O2: POST /api/events/{eventId}/roles ------------------------------------------------
+    { operation: 'POST /api/events/{eventId}/roles', label: 'the organiser adds a role', url: eventUrl('/roles'), headers: as('ownerToken'),
+      body: newRole, expectStatus: 201,
+      check: all(field('filled', 0), field('title', newRole.title), (body, ctx) => (isObject(body) && body.eventId === ctx.eventId ? undefined : 'eventId is not the event')),
+      capture: (body, ctx) => {
+        if (isObject(body)) ctx.roleId = String(body.id);
+      },
+      after: async ({ ctx, get }, body) => {
+        const roles = await get(`/api/events/${need(ctx, 'eventId')}/roles`);
+        return JSON.stringify(roles.body) === JSON.stringify([body]) ? [] : ['GET .../roles does not show exactly the new role'];
+      } },
+    { operation: 'POST /api/events/{eventId}/roles', label: 'no login', url: eventUrl('/roles'), body: newRole, expectStatus: 401, unchanged: true },
+    { operation: 'POST /api/events/{eventId}/roles', label: 'another organiser’s event', url: eventUrl('/roles'), headers: as('strangerToken'),
+      body: newRole, expectStatus: 403, unchanged: true, check: messageContains('only add roles to events you created') },
+    { operation: 'POST /api/events/{eventId}/roles', label: 'a sample event nobody here owns', url: '/api/events/evt_2001/roles', headers: as('ownerToken'),
+      body: newRole, expectStatus: 403, unchanged: true },
+    { operation: 'POST /api/events/{eventId}/roles', label: 'unknown event', url: '/api/events/evt_9999/roles', headers: as('ownerToken'),
+      body: newRole, expectStatus: 404, unchanged: true, check: messageContains('evt_9999') },
+    { operation: 'POST /api/events/{eventId}/roles', label: 'headcount 0', url: eventUrl('/roles'), headers: as('ownerToken'),
+      body: { ...newRole, headcount: 0 }, expectStatus: 400, unchanged: true, check: messageContains('headcount must be a whole number') },
+    { operation: 'POST /api/events/{eventId}/roles', label: 'tries to set filled', url: eventUrl('/roles'), headers: as('ownerToken'),
+      body: { ...newRole, filled: 4 }, expectStatus: 400, unchanged: true, check: messageContains('Unknown field "filled"') },
+    { operation: 'POST /api/events/{eventId}/roles', label: 'category outside the shared list', url: eventUrl('/roles'), headers: as('ownerToken'),
+      body: { ...newRole, category: 'baking' }, expectStatus: 400, unchanged: true, check: messageContains('category must be one of') },
+    { operation: 'POST /api/events/{eventId}/roles', label: 'event is no longer upcoming', url: (ctx) => `/api/events/${need(ctx, 'completedEventId')}/roles`,
+      headers: as('ownerToken'), body: newRole, expectStatus: 409, unchanged: true, check: messageContains('roles can only be added to upcoming events'),
+      before: async ({ ctx, store }) => {
+        // no API finishes an event, so build the fixture in the store: the owner's, but already completed
+        const done = await store.events.create({
+          organiser_id: need(ctx, 'ownerId'), name: 'Verification fixture: already over', type: 'other', county: 'Nakuru',
+          area: 'Milimani', venue: 'Hall', starts_at: new Date('2026-01-10T10:00:00Z'), ends_at: new Date('2026-01-10T12:00:00Z'),
+          expected_guests: 10, status: 'completed',
+        });
+        ctx.completedEventId = done.id;
+      } },
+
+    // ---- O3: GET /api/events/{eventId}/offers ------------------------------------------------
+    { operation: 'GET /api/events/{eventId}/offers', label: 'an event with no offers yet', url: eventUrl('/offers'), headers: as('ownerToken'),
+      expectStatus: 200, unchanged: true, check: isEmptyArray },
+    { operation: 'GET /api/events/{eventId}/offers', label: 'no login', url: eventUrl('/offers'), expectStatus: 401, unchanged: true },
+    { operation: 'GET /api/events/{eventId}/offers', label: 'another organiser’s event', url: eventUrl('/offers'), headers: as('strangerToken'),
+      expectStatus: 403, unchanged: true, check: messageContains('only see the offers on events you created') },
+    { operation: 'GET /api/events/{eventId}/offers', label: 'unknown event', url: '/api/events/evt_9999/offers', headers: as('ownerToken'),
+      expectStatus: 404, unchanged: true, check: messageContains('evt_9999') },
   ];
 }

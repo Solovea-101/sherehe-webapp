@@ -6,9 +6,9 @@ The script starts the server with the in-memory store, sends real requests to ev
 
 ## Latest run
 
-Run on 2026-10-20T17:37:40Z against contract version 0.1.0.
+Run on 2026-10-20T17:40:49Z against contract version 0.1.0.
 
-**32 of 32 cases passed.** 13 operation(s) in the contract are not verified yet (listed at the end).
+**51 of 51 cases passed.** 10 operation(s) in the contract are not verified yet (listed at the end).
 
 ### Contract checks
 
@@ -16,7 +16,7 @@ Run on 2026-10-20T17:37:40Z against contract version 0.1.0.
 |---|---|
 | openapi.yaml is valid OpenAPI 3.0 and every $ref resolves | pass |
 | 102 examples in openapi.yaml match their own schemas | pass |
-| 28 reads and rejected writes changed nothing (store compared before and after each) | pass |
+| 45 reads and rejected writes changed nothing (store compared before and after each) | pass |
 
 ### Requests sent
 
@@ -54,6 +54,25 @@ Run on 2026-10-20T17:37:40Z against contract version 0.1.0.
 | 30 | `POST /api/auth/logout` | ends that login | `/api/auth/logout` | 204 | 204 | pass |
 | 31 | `POST /api/auth/logout` | the same token again | `/api/auth/logout` | 401 | 401 | pass |
 | 32 | `POST /api/auth/logout` | no token | `/api/auth/logout` | 401 | 401 | pass |
+| 33 | `POST /api/events` | an organiser creates an event | `/api/events` | 201 | 201 | pass |
+| 34 | `POST /api/events` | no login | `/api/events` | 401 | 401 | pass |
+| 35 | `POST /api/events` | start date in the past | `/api/events` | 400 | 400 | pass |
+| 36 | `POST /api/events` | county that does not exist | `/api/events` | 400 | 400 | pass |
+| 37 | `POST /api/events` | tries to set the status | `/api/events` | 400 | 400 | pass |
+| 38 | `POST /api/events` | guests sent as text | `/api/events` | 400 | 400 | pass |
+| 39 | `POST /api/events/{eventId}/roles` | the organiser adds a role | `/api/events/evt_2009/roles` | 201 | 201 | pass |
+| 40 | `POST /api/events/{eventId}/roles` | no login | `/api/events/evt_2009/roles` | 401 | 401 | pass |
+| 41 | `POST /api/events/{eventId}/roles` | another organiser’s event | `/api/events/evt_2009/roles` | 403 | 403 | pass |
+| 42 | `POST /api/events/{eventId}/roles` | a sample event nobody here owns | `/api/events/evt_2001/roles` | 403 | 403 | pass |
+| 43 | `POST /api/events/{eventId}/roles` | unknown event | `/api/events/evt_9999/roles` | 404 | 404 | pass |
+| 44 | `POST /api/events/{eventId}/roles` | headcount 0 | `/api/events/evt_2009/roles` | 400 | 400 | pass |
+| 45 | `POST /api/events/{eventId}/roles` | tries to set filled | `/api/events/evt_2009/roles` | 400 | 400 | pass |
+| 46 | `POST /api/events/{eventId}/roles` | category outside the shared list | `/api/events/evt_2009/roles` | 400 | 400 | pass |
+| 47 | `POST /api/events/{eventId}/roles` | event is no longer upcoming | `/api/events/evt_2010/roles` | 409 | 409 | pass |
+| 48 | `GET /api/events/{eventId}/offers` | an event with no offers yet | `/api/events/evt_2009/offers` | 200 | 200 | pass |
+| 49 | `GET /api/events/{eventId}/offers` | no login | `/api/events/evt_2009/offers` | 401 | 401 | pass |
+| 50 | `GET /api/events/{eventId}/offers` | another organiser’s event | `/api/events/evt_2009/offers` | 403 | 403 | pass |
+| 51 | `GET /api/events/{eventId}/offers` | unknown event | `/api/events/evt_9999/offers` | 404 | 404 | pass |
 
 ### What each request is checked for
 
@@ -67,9 +86,6 @@ Run on 2026-10-20T17:37:40Z against contract version 0.1.0.
 
 These operations are in `openapi.yaml` but have no case yet. They are not implemented in this phase, so nothing is claimed about them.
 
-- `POST /api/events`
-- `POST /api/events/{eventId}/roles`
-- `GET /api/events/{eventId}/offers`
 - `POST /api/offers`
 - `DELETE /api/offers/{offerId}`
 - `PATCH /api/offers/{offerId}`

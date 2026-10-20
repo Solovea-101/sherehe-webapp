@@ -2,6 +2,8 @@ import request from 'supertest';
 import { getStore } from '@/lib/db';
 import type { ApiEvent } from '@/lib/mappers';
 import { useTestServer } from './helpers/server';
+import { newOrganiser } from './helpers/auth';
+import { inDays } from './helpers/dates';
 import { EVENT_KEYS, ISO_DATE, keysOf } from './helpers/shapes';
 
 const app = useTestServer();
@@ -160,5 +162,114 @@ describe('GET /api/events/{eventId} (K1)', () => {
     const res = await request(app()).get(`/api/events/${'x'.repeat(5000)}`);
     expect(res.status).toBe(404);
     expect(res.body.message.length).toBeLessThan(100);
+  });
+});
+
+describe('POST /api/events (O2)', () => {
+  const newEvent = () => ({
+    name: 'Njeri and Kamau wedding', type: 'wedding', county: 'Nairobi', area: 'Kilimani', venue: 'Kilimani Gardens',
+    startsAt: inDays(60), endsAt: inDays(60, 18), expectedGuests: 200,
+  });
+  const post = (body: unknown, auth?: { Authorization: string }) => {
+    const req = request(app()).post('/api/events').set('Content-Type', 'application/json');
+    return (auth ? req.set(auth) : req).send(JSON.stringify(body));
+  };
+
+  it('creates an upcoming event owned by the logged-in organiser', async () => {
+    const me = await newOrganiser(app());
+    const body = newEvent();
+    const res = await post(body, me.auth);
+    expect(res.status).toBe(201);
+    expect(keysOf(res.body)).toEqual(EVENT_KEYS);
+    expect(res.body).toMatchObject({ ...body, status: 'upcoming' });
+    expect(res.body.id).toMatch(/^evt_\d+$/);
+    expect(res.headers['location']).toBe(`/api/events/${res.body.id}`);
+    expect(res.body.startsAt).toMatch(ISO_DATE);
+
+    const store = await getStore();
+    expect((await store.events.get(res.body.id))?.organiser_id).toBe(me.id);
+  });
+
+  it('shows up in the partner reads straight away', async () => {
+    const me = await newOrganiser(app());
+    const created = (await post({ ...newEvent(), county: 'Nakuru', area: 'Milimani' }, me.auth)).body;
+    expect((await request(app()).get(`/api/events/${created.id}`)).body).toEqual(created);
+    const list = await request(app()).get('/api/events?status=upcoming&county=nakuru');
+    expect(list.body).toEqual([created]);
+    expect((await request(app()).get(`/api/events/${created.id}/roles`)).body).toEqual([]);
+  });
+
+  it('stores the county in its official spelling and trims text', async () => {
+    const me = await newOrganiser(app());
+    const res = await post({ ...newEvent(), county: ' uasin gishu ', name: '  Eldoret Expo  ', venue: ' Hall ' }, me.auth);
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ county: 'Uasin Gishu', name: 'Eldoret Expo', venue: 'Hall' });
+  });
+
+  it('accepts each event type and the extreme guest counts', async () => {
+    const me = await newOrganiser(app());
+    for (const type of ['wedding', 'conference', 'concert', 'corporate', 'other']) {
+      expect((await post({ ...newEvent(), type }, me.auth)).status).toBe(201);
+    }
+    expect((await post({ ...newEvent(), expectedGuests: 1 }, me.auth)).status).toBe(201);
+    expect((await post({ ...newEvent(), expectedGuests: 100_000 }, me.auth)).status).toBe(201);
+  });
+
+  it('answers 401 without a valid login, and creates nothing', async () => {
+    const before = (await request(app()).get('/api/events?status=upcoming')).body.length;
+    expect((await post(newEvent())).status).toBe(401);
+    expect((await post(newEvent(), { Authorization: 'Bearer ' + 'a'.repeat(43) })).status).toBe(401);
+    expect((await request(app()).get('/api/events?status=upcoming')).body).toHaveLength(before);
+  });
+
+  it.each([
+    ['a missing name', (e: object) => ({ ...e, name: undefined }), 'name is required'],
+    ['a blank name', (e: object) => ({ ...e, name: '   ' }), 'name cannot be empty'],
+    ['a name over 120 characters', (e: object) => ({ ...e, name: 'x'.repeat(121) }), 'at most 120'],
+    ['a name that is not text', (e: object) => ({ ...e, name: 42 }), 'name must be text'],
+    ['an unknown type', (e: object) => ({ ...e, type: 'festival' }), 'type must be one of wedding, conference'],
+    ['a type in the wrong case', (e: object) => ({ ...e, type: 'Wedding' }), 'type must be one of'],
+    ['a missing county', (e: object) => ({ ...e, county: undefined }), 'county is required'],
+    ['a county that does not exist', (e: object) => ({ ...e, county: 'Narnia' }), '47 counties'],
+    ['a blank area', (e: object) => ({ ...e, area: '' }), 'area cannot be empty'],
+    ['a venue over 120 characters', (e: object) => ({ ...e, venue: 'v'.repeat(121) }), 'venue must be at most 120'],
+    ['a start date in the past', (e: object) => ({ ...e, startsAt: '2020-01-01T10:00:00Z' }), 'startsAt must be in the future'],
+    ['a start date with milliseconds', (e: object) => ({ ...e, startsAt: inDays(60).replace('Z', '.000Z') }), 'startsAt must be an ISO 8601 UTC'],
+    ['a start date with an offset', (e: object) => ({ ...e, startsAt: '2030-01-01T10:00:00+03:00' }), 'startsAt must be an ISO 8601 UTC'],
+    ['a start date that is not a date', (e: object) => ({ ...e, startsAt: 'next friday' }), 'startsAt must be an ISO 8601 UTC'],
+    ['an end before the start', (e: object) => ({ ...e, endsAt: inDays(59) }), 'endsAt must be after startsAt'],
+    ['an end equal to the start', (e: object) => ({ ...e, endsAt: inDays(60) }), 'endsAt must be after startsAt'],
+    ['no end date', (e: object) => ({ ...e, endsAt: undefined }), 'endsAt is required'],
+    ['zero guests', (e: object) => ({ ...e, expectedGuests: 0 }), 'expectedGuests must be a whole number from 1 to 100000'],
+    ['too many guests', (e: object) => ({ ...e, expectedGuests: 100_001 }), 'expectedGuests must be a whole number'],
+    ['a fractional guest count', (e: object) => ({ ...e, expectedGuests: 12.5 }), 'expectedGuests must be a whole number'],
+    ['guests sent as text', (e: object) => ({ ...e, expectedGuests: '200' }), 'expectedGuests must be a whole number'],
+    ['an unknown field', (e: object) => ({ ...e, decorations: 'balloons' }), 'Unknown field "decorations"'],
+    ['an attempt to set the status', (e: object) => ({ ...e, status: 'completed' }), 'Unknown field "status"'],
+    ['an attempt to set the organiser', (e: object) => ({ ...e, organiserId: 'usr_1001' }), 'Unknown field "organiserId"'],
+    ['an attempt to choose the id', (e: object) => ({ ...e, id: 'evt_1' }), 'Unknown field "id"'],
+  ])('answers 400 { message } for %s, and creates nothing', async (_label, mutate, text) => {
+    const me = await newOrganiser(app());
+    const store = await getStore();
+    const before = (await store.events.list()).length;
+    const res = await post(mutate(newEvent()), me.auth);
+    expect(res.status).toBe(400);
+    expect(keysOf(res.body)).toEqual(['message']);
+    expect(res.body.message).toContain(text);
+    expect(await store.events.list()).toHaveLength(before);
+  });
+
+  it('answers 400 for bodies that are not objects or not JSON, and 413 when too large', async () => {
+    const me = await newOrganiser(app());
+    for (const body of [[], 'text', null, 7]) expect((await post(body, me.auth)).status).toBe(400);
+    const bad = await request(app()).post('/api/events').set(me.auth).set('Content-Type', 'application/json').send('{"name":');
+    expect(bad.status).toBe(400);
+    expect((await request(app()).post('/api/events').set(me.auth)).status).toBe(400); // no body
+    expect((await post({ ...newEvent(), name: 'x'.repeat(25_000) }, me.auth)).status).toBe(413);
+  });
+
+  it('checks the login before reading the body', async () => {
+    const res = await request(app()).post('/api/events').set('Content-Type', 'application/json').send('{"name":');
+    expect(res.status).toBe(401);
   });
 });
