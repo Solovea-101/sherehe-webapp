@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
+import { PartnerUnavailableError } from '@/lib/clients/fetcher';
 
 export const MAX_BODY_BYTES = 20 * 1024;
 
@@ -27,8 +28,9 @@ export function notFound(what: string, id: string): NextResponse<ErrorBody> {
 }
 
 /**
- * Runs a handler's work and turns anything it throws into 500 { message }, so even a bug answers in
- * our error format instead of an empty reply. The details go to the server log, never to the client.
+ * Runs a handler's work and turns anything it throws into { message }, so even a bug answers in our
+ * error format instead of an empty reply: 502 when a partner (Ujuzi) is the problem, 500 otherwise.
+ * The details go to the server log, never to the client.
  *
  *   export async function GET(req: NextRequest) {
  *     return guard(async () => { ... });
@@ -38,6 +40,11 @@ export async function guard(run: () => Promise<Response>): Promise<Response> {
   try {
     return await run();
   } catch (err) {
+    if (err instanceof PartnerUnavailableError) {
+      // Their problem, not a bug of ours: log what happened, tell our client in our own words.
+      console.warn(`Partner unavailable: ${err.message}`);
+      return fail(502, `${err.partner} is not responding right now. Try again in a minute.`);
+    }
     console.error('Unhandled error in an API handler:', err);
     return fail(500, 'Something went wrong on our side. Please try again.');
   }
@@ -86,4 +93,15 @@ export async function readJson<T = unknown>(req: Request): Promise<ReadJsonResul
   } catch {
     return { ok: false, response: fail(400, 'Request body is not valid JSON') };
   }
+}
+
+/**
+ * A handler for the HTTP methods a route does not support, so a wrong method gets 405 { message }
+ * and an Allow header instead of an empty reply. Each route file exports one for every method it
+ * lacks:  export const PUT = methodNotAllowed(['GET', 'POST']);
+ */
+export function methodNotAllowed(allowed: readonly string[]) {
+  const allow = [...allowed, ...(allowed.includes('GET') ? ['HEAD'] : []), 'OPTIONS'].join(', ');
+  return (req: NextRequest): NextResponse<ErrorBody> =>
+    fail(405, `${req.method} is not allowed here; use ${allowed.join(' or ')}`, { Allow: allow });
 }

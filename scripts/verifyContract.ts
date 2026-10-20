@@ -21,6 +21,7 @@ import Ajv from 'ajv';
 import { getStore } from '@/lib/db';
 import type { Store } from '@/lib/db/types';
 import { createServer } from '@/server';
+import { startUjuziStub } from '../__tests__/helpers/ujuziStub';
 import { buildCases, isObject, type Case, type Ctx, type Env, type JsonObject } from './verifyCases';
 
 // ---- the contract, as loaded and dereferenced by swagger-parser ------------------------------
@@ -268,6 +269,11 @@ async function main(): Promise<number> {
 
   // 2. The server, with fixtures for the cases the sample data cannot cover.
   const store = await getStore();
+  // A local stand-in for Ujuzi, so verification needs no partner and can make Ujuzi misbehave.
+  const ujuzi = await startUjuziStub();
+  process.env.UJUZI_API_URL = ujuzi.url;
+  process.env.UJUZI_API_KEY = '';
+  process.env.UJUZI_TIMEOUT_MS = '2000';
   const server = createServer();
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -275,6 +281,7 @@ async function main(): Promise<number> {
   const env: Env = {
     ctx,
     store,
+    ujuzi,
     get: async (p, token) => {
       const res = await fetch(base + p, {
         headers: token ? { Accept: 'application/json', Authorization: `Bearer ${token}` } : { Accept: 'application/json' },
@@ -292,6 +299,7 @@ async function main(): Promise<number> {
 
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  await ujuzi.close();
 
   // 4. What the contract has that nothing exercised.
   const covered = new Set(cases.map((c) => c.operation));

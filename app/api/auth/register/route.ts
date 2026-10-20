@@ -3,7 +3,7 @@ import { hashPassword } from '@/lib/auth/passwords';
 import { startSession } from '@/lib/auth/session';
 import { getStore } from '@/lib/db';
 import { StoreConflictError } from '@/lib/db/types';
-import { fail, guard, json, readJson } from '@/lib/http';
+import { fail, guard, json, methodNotAllowed, readJson } from '@/lib/http';
 import { toAuthResult, type ApiAuthResult } from '@/lib/mappers';
 import { parseNewAccount } from '@/lib/validation';
 
@@ -33,3 +33,9 @@ export async function POST(req: NextRequest) {
     }
   });
 }
+
+// Any other method gets 405 with the methods this route does support.
+export const GET = methodNotAllowed(['POST']);
+export const PUT = methodNotAllowed(['POST']);
+export const PATCH = methodNotAllowed(['POST']);
+export const DELETE = methodNotAllowed(['POST']);

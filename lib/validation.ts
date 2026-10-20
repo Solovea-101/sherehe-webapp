@@ -333,3 +333,94 @@ export function parseOfferDecision(body: unknown): Parsed<OfferDecisionInput> {
   const status = oneOf(fields.value, 'status', ['accepted', 'declined'] as const);
   return status.ok ? { ok: true, value: { status: status.value } } : status;
 }
+
+// ---- training and certificates -----------------------------------------------------------------
+
+export interface TrainingQuery {
+  category?: RoleCategory;
+  county?: string;
+}
+
+/** GET /api/training-options?category=&county=. Both are optional; blank means "any". */
+export function parseTrainingQuery(params: URLSearchParams): Parsed<TrainingQuery> {
+  const category = single(params, 'category');
+  if (!category.ok) return category;
+  const countyParam = single(params, 'county');
+  if (!countyParam.ok) return countyParam;
+
+  const query: TrainingQuery = {};
+  const typedCategory = category.value?.trim();
+  if (typedCategory) {
+    const match = CATEGORIES.find((c) => c === typedCategory);
+    if (!match) return { ok: false, message: `category must be one of ${CATEGORIES.join(', ')}` };
+    query.category = match;
+  }
+  const typedCounty = countyParam.value?.trim();
+  if (typedCounty) {
+    const official = findCounty(typedCounty);
+    if (!official) return { ok: false, message: "county must be one of Kenya's 47 counties, for example Nairobi" };
+    query.county = official;
+  }
+  return { ok: true, value: query };
+}
+
+// Ujuzi takes crews of 1 to 40 (its contract), so we refuse anything else before calling it.
+const CREW_SIZE = { min: 1, max: 40 };
+
+export interface NewCrewTrainingInput {
+  eventId: string;
+  courseId: string;
+  crewSize: number;
+  preferredStart: Date;
+}
+
+/** POST /api/crew-trainings. Whether the event is the organiser's, and still upcoming, is the handler's job. */
+export function parseNewCrewTraining(body: unknown, now: Date = new Date()): Parsed<NewCrewTrainingInput> {
+  const fields = readFields(body, ['eventId', 'courseId', 'crewSize', 'preferredStart']);
+  if (!fields.ok) return fields;
+  const f = fields.value;
+  const eventId = text(f, 'eventId', { max: 40 });
+  if (!eventId.ok) return eventId;
+  const courseId = text(f, 'courseId', { max: 40 });
+  if (!courseId.ok) return courseId;
+  const crewSize = whole(f, 'crewSize', CREW_SIZE);
+  if (!crewSize.ok) return crewSize;
+  const preferredStart = futureDateTime(f, 'preferredStart', now);
+  if (!preferredStart.ok) return preferredStart;
+  return { ok: true, value: { eventId: eventId.value, courseId: courseId.value, crewSize: crewSize.value, preferredStart: preferredStart.value } };
+}
+
+export interface CrewTrainingUpdateInput {
+  crewSize: number;
+  preferredStart: Date;
+}
+
+/** PUT /api/crew-trainings/{trainingId}: both fields every time, because PUT replaces. */
+export function parseCrewTrainingUpdate(body: unknown, now: Date = new Date()): Parsed<CrewTrainingUpdateInput> {
+  const fields = readFields(body, ['crewSize', 'preferredStart']);
+  if (!fields.ok) return fields;
+  const crewSize = whole(fields.value, 'crewSize', CREW_SIZE);
+  if (!crewSize.ok) return crewSize;
+  const preferredStart = futureDateTime(fields.value, 'preferredStart', now);
+  if (!preferredStart.ok) return preferredStart;
+  return { ok: true, value: { crewSize: crewSize.value, preferredStart: preferredStart.value } };
+}
+
+const CERTIFICATE_NO = /^UJZ-\d{4}-\d{5}$/;
+
+export interface NewCertificateCheckInput {
+  certificateNo: string;
+}
+
+/** POST /api/certificate-checks. Any letter case is accepted; Ujuzi's numbers are upper case. */
+export function parseNewCertificateCheck(body: unknown): Parsed<NewCertificateCheckInput> {
+  const fields = readFields(body, ['certificateNo']);
+  if (!fields.ok) return fields;
+  const number = text(fields.value, 'certificateNo', { max: 40 });
+  if (!number.ok) return number;
+  const certificateNo = number.value.toUpperCase();
+  if (!CERTIFICATE_NO.test(certificateNo)) {
+    return { ok: false, message: 'certificateNo must look like UJZ-2026-00123' };
+  }
+  return { ok: true, value: { certificateNo } };
+}

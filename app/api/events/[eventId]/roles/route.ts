@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { ownedEvent } from '@/lib/auth/ownership';
 import { requireUser } from '@/lib/auth/session';
 import { getStore } from '@/lib/db';
-import { fail, guard, json, notFound, readJson } from '@/lib/http';
+import { fail, guard, json, methodNotAllowed, notFound, readJson } from '@/lib/http';
 import { toRole, type ApiRole } from '@/lib/mappers';
 import { parseNewRole } from '@/lib/validation';
 
@@ -51,3 +51,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     return json<ApiRole>(201, toRole(row));
   });
 }
+
+// Any other method gets 405 with the methods this route does support.
+export const PUT = methodNotAllowed(['GET', 'POST']);
+export const PATCH = methodNotAllowed(['GET', 'POST']);
+export const DELETE = methodNotAllowed(['GET', 'POST']);

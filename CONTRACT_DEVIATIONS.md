@@ -21,6 +21,42 @@ No deviations yet. TODO: after implementing and verifying every GET, either list
 
 TODO, same rule.
 
+### Notes from the coding agent, for the team to turn into the entry above
+
+As before, `openapi.yaml` has not been handed off, so none of this is a post-handoff change yet. Two kinds of note: places where a write does something the contract text does not spell out, and additions the agent drafted to the contract itself. `npm run verify` sends 113 real requests, including every write and its failures, and all match the contract's response shapes (see VERIFICATION.md).
+
+**Partner endpoints Kazi uses (4, 6)**
+
+- **Endpoint 4, `POST /api/offers`, the order of checks.** Body valid (400), role exists (404), its event is `upcoming` (409), the role has open places (409), the offer does not exceed them (400), the role has no other pending offer (409). The contract names the 400, 404 and 409 but not these causes; the messages reuse the contract's own examples ("Role rol_3001 is full", "workersOffered must be a whole number from 1 to the open slots").
+- **Endpoint 4, "a duplicate pending offer" means a second pending offer on the same role.** The README lists it as a 409 cause without defining it. Kazi is the only offering partner, so Sherehe allows one pending offer per role at a time; once the organiser decides, or Kazi withdraws, the role can take a new one. Worth confirming with Kazi.
+- **Endpoint 4, an offer larger than the open places is a `400`, not a `409`.** The message states the number open. A role with no places left is a `409` ("is full").
+- **Endpoint 4, `note` is optional and trimmed.** Leaving it out stores `""`. `null` is refused (`note must be text`), as the contract types it `string`.
+- **Endpoint 6, `DELETE /api/offers/{offerId}`.** Only a `pending` offer can be withdrawn; an accepted or declined one answers `409`. Afterwards the offer is gone and a `GET` answers `404`.
+- **401 is still not returned on endpoints 1-6.** Same as the Week 5 note; partner keys are Phase 5 (Week 9).
+
+**Organiser endpoints (7-14)**
+
+- **Endpoint 14, `PATCH /api/offers/{offerId}`.** Accepting adds the offer's `workersOffered` to the role's `filled`; declining does not. Accepting is refused with `409` if it would put the role over its `headcount`. Deciding an offer on an event that is no longer `upcoming` is a `409`. Check order: logged in (401), offer exists (404), event is theirs (403), body valid (400), state allows it (409).
+- **Endpoint 14 is the only way `filled` ever changes.** Nothing in the API lets an organiser or a partner set it.
+- **The sample events cannot be decided by anyone.** They belong to a sample organiser account nobody can log in as, so a `PATCH` on an offer for a sample event answers `403` for every real organiser. Events organisers create themselves behave normally.
+- **Endpoints 7-13 are drafted by the agent.** `openapi.yaml` now describes register, login, logout, `/api/me`, creating events and roles, and an event's offers. The shapes, limits (name 120 characters, headcount 1-1000, pay up to KES 100,000, guests up to 100,000, password 8-128 characters) and messages are the agent's proposal from `ENDPOINT_LIST.md`. **The team must review each one before handoff.**
+- **A login lasts 7 days** and is sent as `Authorization: Bearer TOKEN`. Wrong password and unknown email give the same `401` answer.
+- **Dates in requests are strict.** `YYYY-MM-DDTHH:mm:ssZ` only: no milliseconds, no offsets such as `+03:00`. Event and shift start times must be in the future.
+
+**Ujuzi-backed endpoints (15-21), all drafted by the agent**
+
+- **They need a login.** Training options, crew trainings and certificate checks all require an organiser token, so Sherehe's Ujuzi key is only ever spent for a logged-in organiser.
+- **Endpoint 16, a training must start before its event.** `preferredStart` is refused if it is not before the event's `startsAt`, because the need (S3) is to have the crew trained before the event. The same rule applies to `PUT` (endpoint 19).
+- **Endpoints 17 and 18 read Sherehe's own database,** not Ujuzi. The booking poller (every 5 minutes) keeps the status in step, so these keep working while Ujuzi is down. `GET /api/training-options` and the writes (16, 19, 20, 21) need Ujuzi and answer Sherehe's own `502 { message }` when it is unreachable, too slow (10 s), refuses our key, redirects, or sends an answer that does not match its contract.
+- **Endpoint 15's answers are remembered for 5 minutes;** certificate checks (21) never are, so a revocation shows at once (S2 is "real time").
+- **Endpoint 21 records every successful check,** including revoked certificates (`valid: false`). A number Ujuzi does not know is `404` and is not recorded.
+- **Ujuzi's booking id is never shown.** Clients only see Sherehe's `trn_` id.
+- **The agent built these against Ujuzi's DRAFT contract.** Nothing has been tried against a live Ujuzi. See HELD_ISSUES.md, items H1 to H6.
+
+**Not documented in the contract**
+
+- Any method a route does not support answers `405 { "message": ... }` with an `Allow` header. An unknown path answers `404 { "message": ... }`. An unexpected failure answers `500 { "message": ... }`. All three keep the `{ message }` error shape.
+
 ## Entry format
 
 For each change:

@@ -7,6 +7,7 @@
  * does the schema checking.
  */
 import type { Store } from '@/lib/db/types';
+import type { UjuziStub } from '../__tests__/helpers/ujuziStub';
 
 export type JsonObject = { [key: string]: unknown };
 export const isObject = (value: unknown): value is JsonObject =>
@@ -19,6 +20,8 @@ export type Ctx = { [key: string]: string };
 export interface Env {
   ctx: Ctx;
   store: Store;
+  /** The local stand-in for Ujuzi that the server is pointed at. */
+  ujuzi: UjuziStub;
   /** A GET against the running server, optionally as a logged-in organiser. */
   get: (path: string, token?: string) => Promise<{ status: number; body: unknown }>;
 }
@@ -119,6 +122,7 @@ export async function buildCases(env: Env): Promise<Case[]> {
   const newRole = {
     title: 'Verification ushers', category: 'events', headcount: 4, shiftStart: inDays(90, 8), shiftEnd: inDays(90, 21), payPerShift: 1300,
   };
+  const putBody = { crewSize: 9, preferredStart: inDays(35) };
   const eventUrl = (suffix = '') => (ctx: Ctx) => `/api/events/${need(ctx, 'eventId')}${suffix}`;
 
   return [
@@ -410,6 +414,188 @@ export async function buildCases(env: Env): Promise<Case[]> {
         const roles = await get(`/api/events/${need(ctx, 'eventId')}/roles`);
         const role = asArray(roles.body).find((r) => r.id === ctx.roleId);
         return role?.filled === 3 ? [] : [`declining changed the role: ${role?.filled} filled, expected 3`];
+      } },
+
+    // ---- O4 / S1: GET /api/training-options --------------------------------------------------
+    { operation: 'GET /api/training-options', label: 'every course, in our own shape', url: '/api/training-options', headers: as('ownerToken'),
+      expectStatus: 200, unchanged: true,
+      check: all((body) => (asArray(body).length === 4 ? undefined : 'expected 4 courses'),
+        (body) => (JSON.stringify(body).includes('cen_') ? 'Ujuzi’s centre id leaked' : undefined)) },
+    { operation: 'GET /api/training-options', label: 'category and county filters, any letter case', url: '/api/training-options?category=security&county=NAIROBI',
+      headers: as('ownerToken'), expectStatus: 200, unchanged: true,
+      check: (body) => (asArray(body).length === 1 && asArray(body)[0].courseId === 'crs_502' ? undefined : 'expected only crs_502') },
+    { operation: 'GET /api/training-options', label: 'nothing matches', url: '/api/training-options?category=plumbing', headers: as('ownerToken'),
+      expectStatus: 200, unchanged: true, check: isEmptyArray },
+    { operation: 'GET /api/training-options', label: 'category outside the shared list', url: '/api/training-options?category=baking', headers: as('ownerToken'),
+      expectStatus: 400, unchanged: true, check: messageContains('category must be one of') },
+    { operation: 'GET /api/training-options', label: 'no login', url: '/api/training-options', expectStatus: 401, unchanged: true },
+    { operation: 'GET /api/training-options', label: 'Ujuzi is down: our own 502', url: '/api/training-options?county=Mombasa', headers: as('ownerToken'),
+      expectStatus: 502, unchanged: true, check: all(messageContains('Ujuzi is not responding right now'), (body) => (JSON.stringify(body).match(/ECONN|127\.0\.0\.1|socket/i) ? 'Ujuzi’s failure leaked' : undefined)),
+      before: async ({ ujuzi }) => {
+        ujuzi.mode = 'down';
+      },
+      after: async ({ ujuzi }) => {
+        ujuzi.mode = 'ok';
+        return [];
+      } },
+
+    // ---- O4 / S3: POST /api/crew-trainings ---------------------------------------------------
+    { operation: 'POST /api/crew-trainings', label: 'the organiser books crew training for their event', url: '/api/crew-trainings', headers: as('ownerToken'),
+      body: (ctx: Ctx) => ({ eventId: need(ctx, 'eventId'), courseId: 'crs_501', crewSize: 6, preferredStart: inDays(30) }),
+      expectStatus: 201, expectHeaders: { location: /^\/api\/crew-trainings\/trn_\d+$/ },
+      check: all(field('status', 'pending'), field('crewSize', 6), (body) => (JSON.stringify(body).includes('bkg_') ? 'Ujuzi’s booking id leaked' : undefined)),
+      capture: (body, ctx) => {
+        if (isObject(body)) ctx.trainingId = String(body.id);
+      },
+      after: async ({ ctx, get, ujuzi }, body) => {
+        const one = await get(`/api/crew-trainings/${need(ctx, 'trainingId')}`, need(ctx, 'ownerToken'));
+        const list = await get('/api/crew-trainings', need(ctx, 'ownerToken'));
+        const booking = [...ujuzi.bookings.values()].at(-1);
+        return [
+          ...(JSON.stringify(one.body) === JSON.stringify(body) ? [] : ['GET /api/crew-trainings/{id} does not return what was created']),
+          ...(JSON.stringify(list.body) === JSON.stringify([body]) ? [] : ['the organiser’s list is not exactly the new training']),
+          ...(booking?.eventName === 'Verification gala' && booking.crewSize === 6 ? [] : ['Ujuzi was not given the right booking']),
+        ];
+      } },
+    { operation: 'POST /api/crew-trainings', label: 'no login', url: '/api/crew-trainings',
+      body: (ctx: Ctx) => ({ eventId: need(ctx, 'eventId'), courseId: 'crs_501', crewSize: 6, preferredStart: inDays(30) }), expectStatus: 401, unchanged: true },
+    { operation: 'POST /api/crew-trainings', label: 'crew of 41', url: '/api/crew-trainings', headers: as('ownerToken'),
+      body: (ctx: Ctx) => ({ eventId: need(ctx, 'eventId'), courseId: 'crs_501', crewSize: 41, preferredStart: inDays(30) }), expectStatus: 400, unchanged: true,
+      check: messageContains('crewSize must be a whole number from 1 to 40') },
+    { operation: 'POST /api/crew-trainings', label: 'training would start after the event', url: '/api/crew-trainings', headers: as('ownerToken'),
+      body: (ctx: Ctx) => ({ eventId: need(ctx, 'eventId'), courseId: 'crs_501', crewSize: 6, preferredStart: inDays(91) }), expectStatus: 400, unchanged: true,
+      check: messageContains('preferredStart must be before the event starts') },
+    { operation: 'POST /api/crew-trainings', label: 'tries to set the status', url: '/api/crew-trainings', headers: as('ownerToken'),
+      body: (ctx: Ctx) => ({ eventId: need(ctx, 'eventId'), courseId: 'crs_501', crewSize: 6, preferredStart: inDays(30), status: 'confirmed' }),
+      expectStatus: 400, unchanged: true, check: messageContains('Unknown field "status"') },
+    { operation: 'POST /api/crew-trainings', label: 'unknown event', url: '/api/crew-trainings', headers: as('ownerToken'),
+      body: { eventId: 'evt_9999', courseId: 'crs_501', crewSize: 6, preferredStart: inDays(30) }, expectStatus: 404, unchanged: true, check: messageContains('evt_9999') },
+    { operation: 'POST /api/crew-trainings', label: 'another organiser’s event', url: '/api/crew-trainings', headers: as('strangerToken'),
+      body: (ctx: Ctx) => ({ eventId: need(ctx, 'eventId'), courseId: 'crs_501', crewSize: 6, preferredStart: inDays(30) }), expectStatus: 403, unchanged: true,
+      check: messageContains('only book training for events you created') },
+    { operation: 'POST /api/crew-trainings', label: 'a course Ujuzi does not have', url: '/api/crew-trainings', headers: as('ownerToken'),
+      body: (ctx: Ctx) => ({ eventId: need(ctx, 'eventId'), courseId: 'crs_999', crewSize: 6, preferredStart: inDays(30) }), expectStatus: 404, unchanged: true,
+      check: messageContains('Course crs_999 not found') },
+    { operation: 'POST /api/crew-trainings', label: 'Ujuzi is down: our own 502, nothing recorded', url: '/api/crew-trainings', headers: as('ownerToken'),
+      body: (ctx: Ctx) => ({ eventId: need(ctx, 'eventId'), courseId: 'crs_501', crewSize: 6, preferredStart: inDays(30) }), expectStatus: 502, unchanged: true,
+      check: messageContains('Ujuzi is not responding right now'),
+      before: async ({ ujuzi }) => {
+        ujuzi.mode = 'down';
+      },
+      after: async ({ ujuzi }) => {
+        ujuzi.mode = 'ok';
+        return ujuzi.bookings.size === 1 ? [] : [`Ujuzi holds ${ujuzi.bookings.size} bookings, expected 1`];
+      } },
+
+    // ---- O4 / S4: GET /api/crew-trainings and /{trainingId} ----------------------------------
+    { operation: 'GET /api/crew-trainings', label: 'the organiser’s own trainings', url: '/api/crew-trainings', headers: as('ownerToken'),
+      expectStatus: 200, unchanged: true, check: (body, ctx) => (asArray(body).length === 1 && asArray(body)[0].id === ctx.trainingId ? undefined : 'expected exactly the one booked') },
+    { operation: 'GET /api/crew-trainings', label: 'another organiser sees none of them', url: '/api/crew-trainings', headers: as('strangerToken'),
+      expectStatus: 200, unchanged: true, check: isEmptyArray },
+    { operation: 'GET /api/crew-trainings', label: 'no login', url: '/api/crew-trainings', expectStatus: 401, unchanged: true },
+    { operation: 'GET /api/crew-trainings/{trainingId}', label: 'one training', url: (ctx) => `/api/crew-trainings/${need(ctx, 'trainingId')}`,
+      headers: as('ownerToken'), expectStatus: 200, unchanged: true, check: (body, ctx) => hasId(need(ctx, 'trainingId'))(body) },
+    { operation: 'GET /api/crew-trainings/{trainingId}', label: 'another organiser’s training', url: (ctx) => `/api/crew-trainings/${need(ctx, 'trainingId')}`,
+      headers: as('strangerToken'), expectStatus: 403, unchanged: true, check: messageContains('only see your own crew trainings') },
+    { operation: 'GET /api/crew-trainings/{trainingId}', label: 'unknown training', url: '/api/crew-trainings/trn_9999', headers: as('ownerToken'),
+      expectStatus: 404, unchanged: true, check: messageContains('trn_9999') },
+
+    // ---- O4 / S5: PUT /api/crew-trainings/{trainingId} ---------------------------------------
+    { operation: 'PUT /api/crew-trainings/{trainingId}', label: 'replace crew size and start', url: (ctx) => `/api/crew-trainings/${need(ctx, 'trainingId')}`,
+      headers: as('ownerToken'), body: putBody, expectStatus: 200, check: all(field('crewSize', 9), field('preferredStart', putBody.preferredStart)),
+      capture: (body, ctx) => {
+        ctx.putResult = JSON.stringify(body);
+      },
+      after: async ({ ctx, get, ujuzi }) => {
+        const one = await get(`/api/crew-trainings/${need(ctx, 'trainingId')}`, need(ctx, 'ownerToken'));
+        const booking = [...ujuzi.bookings.values()][0];
+        return [
+          ...(JSON.stringify(one.body) === ctx.putResult ? [] : ['GET does not show the change']),
+          ...(booking?.crewSize === 9 ? [] : ['Ujuzi’s booking was not changed']),
+        ];
+      } },
+    { operation: 'PUT /api/crew-trainings/{trainingId}', label: 'the same body again gives the same result (idempotent)', url: (ctx) => `/api/crew-trainings/${need(ctx, 'trainingId')}`,
+      headers: as('ownerToken'), body: putBody, expectStatus: 200,
+      check: (body, ctx) => (JSON.stringify(body) === need(ctx, 'putResult') ? undefined : 'the second PUT gave a different result') },
+    { operation: 'PUT /api/crew-trainings/{trainingId}', label: 'crew of 0', url: (ctx) => `/api/crew-trainings/${need(ctx, 'trainingId')}`,
+      headers: as('ownerToken'), body: { crewSize: 0, preferredStart: inDays(35) }, expectStatus: 400, unchanged: true, check: messageContains('crewSize must be a whole number') },
+    { operation: 'PUT /api/crew-trainings/{trainingId}', label: 'another organiser', url: (ctx) => `/api/crew-trainings/${need(ctx, 'trainingId')}`,
+      headers: as('strangerToken'), body: putBody, expectStatus: 403, unchanged: true, check: messageContains('only change your own crew trainings') },
+    { operation: 'PUT /api/crew-trainings/{trainingId}', label: 'unknown training', url: '/api/crew-trainings/trn_9999', headers: as('ownerToken'),
+      body: putBody, expectStatus: 404, unchanged: true },
+    { operation: 'PUT /api/crew-trainings/{trainingId}', label: 'Ujuzi is down: our own 502, nothing changed', url: (ctx) => `/api/crew-trainings/${need(ctx, 'trainingId')}`,
+      headers: as('ownerToken'), body: { crewSize: 5, preferredStart: inDays(36) }, expectStatus: 502, unchanged: true,
+      before: async ({ ujuzi }) => {
+        ujuzi.mode = 'down';
+      },
+      after: async ({ ujuzi }) => {
+        ujuzi.mode = 'ok';
+        return [];
+      } },
+    { operation: 'POST /api/crew-trainings', label: 'a second booking, for the decision cases', url: '/api/crew-trainings', headers: as('ownerToken'),
+      body: (ctx: Ctx) => ({ eventId: need(ctx, 'eventId'), courseId: 'crs_502', crewSize: 3, preferredStart: inDays(31) }), expectStatus: 201,
+      capture: (body, ctx) => {
+        if (isObject(body)) ctx.training2Id = String(body.id);
+      } },
+    { operation: 'PUT /api/crew-trainings/{trainingId}', label: 'the centre decided first: 409, and our copy catches up', url: (ctx) => `/api/crew-trainings/${need(ctx, 'training2Id')}`,
+      headers: as('ownerToken'), body: putBody, expectStatus: 409, check: messageContains('is now confirmed'),
+      before: async ({ ujuzi }) => {
+        ujuzi.decide([...ujuzi.bookings.keys()].at(-1) as string, 'confirmed'); // the training centre's staff confirm it
+      },
+      after: async ({ ctx, get }) => {
+        const one = await get(`/api/crew-trainings/${need(ctx, 'training2Id')}`, need(ctx, 'ownerToken'));
+        return isObject(one.body) && one.body.status === 'confirmed' ? [] : ['our copy still says pending'];
+      } },
+
+    // ---- O4 / S5: DELETE /api/crew-trainings/{trainingId} ------------------------------------
+    { operation: 'DELETE /api/crew-trainings/{trainingId}', label: 'a decided training cannot be cancelled', url: (ctx) => `/api/crew-trainings/${need(ctx, 'training2Id')}`,
+      headers: as('ownerToken'), expectStatus: 409, unchanged: true, check: messageContains('only pending crew trainings can be cancelled') },
+    { operation: 'DELETE /api/crew-trainings/{trainingId}', label: 'another organiser', url: (ctx) => `/api/crew-trainings/${need(ctx, 'trainingId')}`,
+      headers: as('strangerToken'), expectStatus: 403, unchanged: true },
+    { operation: 'DELETE /api/crew-trainings/{trainingId}', label: 'Ujuzi is down: our own 502, training kept', url: (ctx) => `/api/crew-trainings/${need(ctx, 'trainingId')}`,
+      headers: as('ownerToken'), expectStatus: 502, unchanged: true,
+      before: async ({ ujuzi }) => {
+        ujuzi.mode = 'down';
+      },
+      after: async ({ ujuzi }) => {
+        ujuzi.mode = 'ok';
+        return [];
+      } },
+    { operation: 'DELETE /api/crew-trainings/{trainingId}', label: 'the organiser cancels a pending training', url: (ctx) => `/api/crew-trainings/${need(ctx, 'trainingId')}`,
+      headers: as('ownerToken'), expectStatus: 204,
+      after: async ({ ctx, get, ujuzi }) => {
+        const gone = await get(`/api/crew-trainings/${need(ctx, 'trainingId')}`, need(ctx, 'ownerToken'));
+        return [
+          ...(gone.status === 404 ? [] : [`the cancelled training can still be read (status ${gone.status})`]),
+          ...(ujuzi.bookings.size === 1 ? [] : [`Ujuzi holds ${ujuzi.bookings.size} bookings, expected only the decided one`]),
+        ];
+      } },
+    { operation: 'DELETE /api/crew-trainings/{trainingId}', label: 'the same training again', url: (ctx) => `/api/crew-trainings/${need(ctx, 'trainingId')}`,
+      headers: as('ownerToken'), expectStatus: 404, unchanged: true },
+
+    // ---- O5 / S2: POST /api/certificate-checks -----------------------------------------------
+    { operation: 'POST /api/certificate-checks', label: 'a valid certificate', url: '/api/certificate-checks', headers: as('ownerToken'),
+      body: { certificateNo: 'UJZ-2026-00123' }, expectStatus: 201, expectHeaders: { 'cache-control': 'no-store' },
+      check: all(field('valid', true), field('holder', 'Achieng O.'), (body) => (isObject(body) && /^chk_\d+$/.test(String(body.id)) ? undefined : 'id is not chk_...')),
+      after: async ({ ctx, store }) => {
+        const saved = await store.certificateChecks.listByOrganiser(need(ctx, 'ownerId'));
+        return saved.length === 1 && saved[0].certificate_no === 'UJZ-2026-00123' ? [] : ['the check was not recorded'];
+      } },
+    { operation: 'POST /api/certificate-checks', label: 'a revoked certificate is recorded with valid false', url: '/api/certificate-checks', headers: as('ownerToken'),
+      body: { certificateNo: 'ujz-2026-00124' }, expectStatus: 201, check: all(field('valid', false), field('certificateNo', 'UJZ-2026-00124')) },
+    { operation: 'POST /api/certificate-checks', label: 'a number Ujuzi does not know', url: '/api/certificate-checks', headers: as('ownerToken'),
+      body: { certificateNo: 'UJZ-2026-99999' }, expectStatus: 404, unchanged: true, check: messageContains('Certificate UJZ-2026-99999 not found') },
+    { operation: 'POST /api/certificate-checks', label: 'a number in the wrong format', url: '/api/certificate-checks', headers: as('ownerToken'),
+      body: { certificateNo: 'ABC-1' }, expectStatus: 400, unchanged: true, check: messageContains('certificateNo must look like') },
+    { operation: 'POST /api/certificate-checks', label: 'no login', url: '/api/certificate-checks', body: { certificateNo: 'UJZ-2026-00123' }, expectStatus: 401, unchanged: true },
+    { operation: 'POST /api/certificate-checks', label: 'Ujuzi is down: our own 502, nothing recorded', url: '/api/certificate-checks', headers: as('ownerToken'),
+      body: { certificateNo: 'UJZ-2026-00123' }, expectStatus: 502, unchanged: true,
+      before: async ({ ujuzi }) => {
+        ujuzi.mode = 'down';
+      },
+      after: async ({ ujuzi }) => {
+        ujuzi.mode = 'ok';
+        return [];
       } },
   ];
 }

@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser } from '@/lib/auth/session';
 import { getStore } from '@/lib/db';
-import { fail, guard, json, noContent, notFound, readJson } from '@/lib/http';
+import { fail, guard, json, methodNotAllowed, noContent, notFound, readJson } from '@/lib/http';
 import { toOffer, type ApiOffer } from '@/lib/mappers';
 import { parseOfferDecision } from '@/lib/validation';
 
@@ -75,3 +75,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   });
 }
+
+// Any other method gets 405 with the methods this route does support.
+export const POST = methodNotAllowed(['GET', 'PATCH', 'DELETE']);
+export const PUT = methodNotAllowed(['GET', 'PATCH', 'DELETE']);

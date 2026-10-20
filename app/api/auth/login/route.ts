@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { burnPasswordCheck, verifyPassword } from '@/lib/auth/passwords';
 import { startSession } from '@/lib/auth/session';
 import { getStore } from '@/lib/db';
-import { fail, guard, json, readJson } from '@/lib/http';
+import { fail, guard, json, methodNotAllowed, readJson } from '@/lib/http';
 import { toAuthResult, type ApiAuthResult } from '@/lib/mappers';
 import { parseCredentials } from '@/lib/validation';
 
@@ -25,3 +25,9 @@ export async function POST(req: NextRequest) {
     return json<ApiAuthResult>(200, toAuthResult(user, token, expiresAt), { 'Cache-Control': 'no-store' });
   });
 }
+
+// Any other method gets 405 with the methods this route does support.
+export const GET = methodNotAllowed(['POST']);
+export const PUT = methodNotAllowed(['POST']);
+export const PATCH = methodNotAllowed(['POST']);
+export const DELETE = methodNotAllowed(['POST']);

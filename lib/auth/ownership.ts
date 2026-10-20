@@ -1,6 +1,6 @@
 import type { NextResponse } from 'next/server';
 import { getStore } from '@/lib/db';
-import type { EventRow, UserRow } from '@/lib/db/types';
+import type { CrewTrainingRow, EventRow, UserRow } from '@/lib/db/types';
 import { fail, notFound, type ErrorBody } from '@/lib/http';
 
 export type OwnedEvent = { ok: true; event: EventRow } | { ok: false; response: NextResponse<ErrorBody> };
@@ -16,4 +16,15 @@ export async function ownedEvent(user: UserRow, eventId: string, forbiddenMessag
   if (!event) return { ok: false, response: notFound('Event', eventId) };
   if (event.organiser_id !== user.id) return { ok: false, response: fail(403, forbiddenMessage) };
   return { ok: true, event };
+}
+
+export type OwnedTraining = { ok: true; training: CrewTrainingRow } | { ok: false; response: NextResponse<ErrorBody> };
+
+/** Finds a crew training and checks that this organiser booked it: 404 if unknown, 403 if someone else's. */
+export async function ownedTraining(user: UserRow, trainingId: string, forbiddenMessage: string): Promise<OwnedTraining> {
+  const store = await getStore();
+  const training = await store.crewTrainings.get(trainingId);
+  if (!training) return { ok: false, response: notFound('Crew training', trainingId) };
+  if (training.organiser_id !== user.id) return { ok: false, response: fail(403, forbiddenMessage) };
+  return { ok: true, training };
 }

@@ -6,9 +6,9 @@ The script starts the server with the in-memory store, sends real requests to ev
 
 ## Latest run
 
-Run on 2026-10-20T17:43:29Z against contract version 0.1.0.
+Run on 2026-10-20T22:53:03Z against contract version 0.1.0.
 
-**73 of 73 cases passed.** 7 operation(s) in the contract are not verified yet (listed at the end).
+**113 of 113 cases passed.** 0 operation(s) in the contract are not verified yet (listed at the end).
 
 ### Contract checks
 
@@ -16,7 +16,7 @@ Run on 2026-10-20T17:43:29Z against contract version 0.1.0.
 |---|---|
 | openapi.yaml is valid OpenAPI 3.0 and every $ref resolves | pass |
 | 102 examples in openapi.yaml match their own schemas | pass |
-| 61 reads and rejected writes changed nothing (store compared before and after each) | pass |
+| 93 reads and rejected writes changed nothing (store compared before and after each) | pass |
 
 ### Requests sent
 
@@ -95,6 +95,46 @@ Run on 2026-10-20T17:43:29Z against contract version 0.1.0.
 | 71 | `DELETE /api/offers/{offerId}` | unknown offer | `/api/offers/ofr_9999` | 404 | 404 | pass |
 | 72 | `POST /api/offers` | one more offer, to be declined | `/api/offers` | 201 | 201 | pass |
 | 73 | `PATCH /api/offers/{offerId}` | the organiser declines: no places fill | `/api/offers/ofr_4004` | 200 | 200 | pass |
+| 74 | `GET /api/training-options` | every course, in our own shape | `/api/training-options` | 200 | 200 | pass |
+| 75 | `GET /api/training-options` | category and county filters, any letter case | `/api/training-options?category=security&county=NAIROBI` | 200 | 200 | pass |
+| 76 | `GET /api/training-options` | nothing matches | `/api/training-options?category=plumbing` | 200 | 200 | pass |
+| 77 | `GET /api/training-options` | category outside the shared list | `/api/training-options?category=baking` | 400 | 400 | pass |
+| 78 | `GET /api/training-options` | no login | `/api/training-options` | 401 | 401 | pass |
+| 79 | `GET /api/training-options` | Ujuzi is down: our own 502 | `/api/training-options?county=Mombasa` | 502 | 502 | pass |
+| 80 | `POST /api/crew-trainings` | the organiser books crew training for their event | `/api/crew-trainings` | 201 | 201 | pass |
+| 81 | `POST /api/crew-trainings` | no login | `/api/crew-trainings` | 401 | 401 | pass |
+| 82 | `POST /api/crew-trainings` | crew of 41 | `/api/crew-trainings` | 400 | 400 | pass |
+| 83 | `POST /api/crew-trainings` | training would start after the event | `/api/crew-trainings` | 400 | 400 | pass |
+| 84 | `POST /api/crew-trainings` | tries to set the status | `/api/crew-trainings` | 400 | 400 | pass |
+| 85 | `POST /api/crew-trainings` | unknown event | `/api/crew-trainings` | 404 | 404 | pass |
+| 86 | `POST /api/crew-trainings` | another organiser’s event | `/api/crew-trainings` | 403 | 403 | pass |
+| 87 | `POST /api/crew-trainings` | a course Ujuzi does not have | `/api/crew-trainings` | 404 | 404 | pass |
+| 88 | `POST /api/crew-trainings` | Ujuzi is down: our own 502, nothing recorded | `/api/crew-trainings` | 502 | 502 | pass |
+| 89 | `GET /api/crew-trainings` | the organiser’s own trainings | `/api/crew-trainings` | 200 | 200 | pass |
+| 90 | `GET /api/crew-trainings` | another organiser sees none of them | `/api/crew-trainings` | 200 | 200 | pass |
+| 91 | `GET /api/crew-trainings` | no login | `/api/crew-trainings` | 401 | 401 | pass |
+| 92 | `GET /api/crew-trainings/{trainingId}` | one training | `/api/crew-trainings/trn_5001` | 200 | 200 | pass |
+| 93 | `GET /api/crew-trainings/{trainingId}` | another organiser’s training | `/api/crew-trainings/trn_5001` | 403 | 403 | pass |
+| 94 | `GET /api/crew-trainings/{trainingId}` | unknown training | `/api/crew-trainings/trn_9999` | 404 | 404 | pass |
+| 95 | `PUT /api/crew-trainings/{trainingId}` | replace crew size and start | `/api/crew-trainings/trn_5001` | 200 | 200 | pass |
+| 96 | `PUT /api/crew-trainings/{trainingId}` | the same body again gives the same result (idempotent) | `/api/crew-trainings/trn_5001` | 200 | 200 | pass |
+| 97 | `PUT /api/crew-trainings/{trainingId}` | crew of 0 | `/api/crew-trainings/trn_5001` | 400 | 400 | pass |
+| 98 | `PUT /api/crew-trainings/{trainingId}` | another organiser | `/api/crew-trainings/trn_5001` | 403 | 403 | pass |
+| 99 | `PUT /api/crew-trainings/{trainingId}` | unknown training | `/api/crew-trainings/trn_9999` | 404 | 404 | pass |
+| 100 | `PUT /api/crew-trainings/{trainingId}` | Ujuzi is down: our own 502, nothing changed | `/api/crew-trainings/trn_5001` | 502 | 502 | pass |
+| 101 | `POST /api/crew-trainings` | a second booking, for the decision cases | `/api/crew-trainings` | 201 | 201 | pass |
+| 102 | `PUT /api/crew-trainings/{trainingId}` | the centre decided first: 409, and our copy catches up | `/api/crew-trainings/trn_5002` | 409 | 409 | pass |
+| 103 | `DELETE /api/crew-trainings/{trainingId}` | a decided training cannot be cancelled | `/api/crew-trainings/trn_5002` | 409 | 409 | pass |
+| 104 | `DELETE /api/crew-trainings/{trainingId}` | another organiser | `/api/crew-trainings/trn_5001` | 403 | 403 | pass |
+| 105 | `DELETE /api/crew-trainings/{trainingId}` | Ujuzi is down: our own 502, training kept | `/api/crew-trainings/trn_5001` | 502 | 502 | pass |
+| 106 | `DELETE /api/crew-trainings/{trainingId}` | the organiser cancels a pending training | `/api/crew-trainings/trn_5001` | 204 | 204 | pass |
+| 107 | `DELETE /api/crew-trainings/{trainingId}` | the same training again | `/api/crew-trainings/trn_5001` | 404 | 404 | pass |
+| 108 | `POST /api/certificate-checks` | a valid certificate | `/api/certificate-checks` | 201 | 201 | pass |
+| 109 | `POST /api/certificate-checks` | a revoked certificate is recorded with valid false | `/api/certificate-checks` | 201 | 201 | pass |
+| 110 | `POST /api/certificate-checks` | a number Ujuzi does not know | `/api/certificate-checks` | 404 | 404 | pass |
+| 111 | `POST /api/certificate-checks` | a number in the wrong format | `/api/certificate-checks` | 400 | 400 | pass |
+| 112 | `POST /api/certificate-checks` | no login | `/api/certificate-checks` | 401 | 401 | pass |
+| 113 | `POST /api/certificate-checks` | Ujuzi is down: our own 502, nothing recorded | `/api/certificate-checks` | 502 | 502 | pass |
 
 ### What each request is checked for
 
@@ -106,12 +146,4 @@ Run on 2026-10-20T17:43:29Z against contract version 0.1.0.
 
 ### Not yet verified
 
-These operations are in `openapi.yaml` but have no case yet. They are not implemented in this phase, so nothing is claimed about them.
-
-- `GET /api/training-options`
-- `GET /api/crew-trainings`
-- `POST /api/crew-trainings`
-- `GET /api/crew-trainings/{trainingId}`
-- `PUT /api/crew-trainings/{trainingId}`
-- `DELETE /api/crew-trainings/{trainingId}`
-- `POST /api/certificate-checks`
+Every operation in the contract has at least one case.

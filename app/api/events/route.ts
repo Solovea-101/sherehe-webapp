@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser } from '@/lib/auth/session';
 import { getStore } from '@/lib/db';
-import { fail, guard, json, readJson } from '@/lib/http';
+import { fail, guard, json, methodNotAllowed, readJson } from '@/lib/http';
 import { toEvent, type ApiEvent } from '@/lib/mappers';
 import { parseEventsQuery, parseNewEvent } from '@/lib/validation';
 
@@ -43,3 +43,8 @@ export async function POST(req: NextRequest) {
     return json<ApiEvent>(201, toEvent(row), { Location: `/api/events/${row.id}` });
   });
 }
+
+// Any other method gets 405 with the methods this route does support.
+export const PUT = methodNotAllowed(['GET', 'POST']);
+export const PATCH = methodNotAllowed(['GET', 'POST']);
+export const DELETE = methodNotAllowed(['GET', 'POST']);

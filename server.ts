@@ -3,6 +3,7 @@ import path from 'node:path';
 import { loadEnvConfig } from '@next/env';
 import next from 'next';
 import { WebSocketServer } from 'ws';
+import { startBookingPoller } from '@/lib/jobs/bookingPoller';
 
 // The one path where our own WebSocket upgrades are accepted. Next.js keeps /_next/* (dev hot reload).
 const WS_PATH = '/ws';
@@ -65,10 +66,11 @@ if (path.basename(process.argv[1] ?? '') === 'server.ts') {
   server.listen(port, () => {
     console.log(`> Sherehe listening on http://localhost:${port} (${isDev() ? 'development' : process.env.NODE_ENV})`);
   });
-  // Later phase: start lib/jobs/bookingPoller.ts here, once the Ujuzi client exists.
+  const stopPoller = startBookingPoller();
 
   // Render sends SIGTERM when it replaces an instance; finish in-flight requests, then leave.
   process.on('SIGTERM', () => {
+    stopPoller();
     server.close(() => process.exit(0));
     server.closeIdleConnections();
     setTimeout(() => process.exit(0), 10_000).unref();

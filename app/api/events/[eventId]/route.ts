@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { getStore } from '@/lib/db';
-import { guard, json, notFound } from '@/lib/http';
+import { guard, json, methodNotAllowed, notFound } from '@/lib/http';
 import { toEvent, type ApiEvent } from '@/lib/mappers';
 
 // K1: one event.
@@ -13,3 +13,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
     return json<ApiEvent>(200, toEvent(row));
   });
 }
+
+// Any other method gets 405 with the methods this route does support.
+export const POST = methodNotAllowed(['GET']);
+export const PUT = methodNotAllowed(['GET']);
+export const PATCH = methodNotAllowed(['GET']);
+export const DELETE = methodNotAllowed(['GET']);
