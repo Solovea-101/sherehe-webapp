@@ -8,6 +8,9 @@
  * UTC with a Z and no milliseconds. It also checks that openapi.yaml is valid OpenAPI and that the
  * examples inside it match their own schemas, and that reading data changed nothing.
  *
+ * Writes are checked harder: a successful write is read back with a GET to confirm it stuck, and a
+ * rejected write is checked to have changed nothing.
+ *
  * Operations in the contract that have no case yet are listed as "not yet verified", never as passed.
  */
 import fs from 'node:fs/promises';
@@ -18,10 +21,10 @@ import Ajv from 'ajv';
 import { getStore } from '@/lib/db';
 import type { Store } from '@/lib/db/types';
 import { createServer } from '@/server';
+import { buildCases, isObject, type Case, type Ctx, type Env, type JsonObject } from './verifyCases';
 
 // ---- the contract, as loaded and dereferenced by swagger-parser ------------------------------
 
-type JsonObject = { [key: string]: unknown };
 interface ContractResponse {
   content?: { [mediaType: string]: { schema?: JsonObject; example?: unknown } };
 }
@@ -34,9 +37,6 @@ interface Contract {
 }
 const METHODS = ['get', 'put', 'post', 'delete', 'patch'] as const;
 
-const isObject = (value: unknown): value is JsonObject =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
 // ---- schema checking -------------------------------------------------------------------------
 
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
@@ -48,6 +48,10 @@ function makeAjv(): Ajv {
   ajv.addFormat('date-time', {
     type: 'string',
     validate: (value: string) => ISO_UTC.test(value) && !Number.isNaN(Date.parse(value)),
+  });
+  ajv.addFormat('date', {
+    type: 'string',
+    validate: (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)),
   });
   return ajv;
 }
@@ -88,130 +92,81 @@ function checkExamples(contract: unknown, ajv: Ajv): { checked: number; problems
   return { checked, problems };
 }
 
-// ---- cases -----------------------------------------------------------------------------------
-
-interface Case {
-  /** The operation as the contract writes it, e.g. "GET /api/events/{eventId}". */
-  operation: string;
-  label: string;
-  /** Path and query actually requested. */
-  url: string;
-  expectStatus: number;
-  /** Extra checks on the parsed body; return a problem description, or undefined when fine. */
-  check?: (body: unknown) => string | undefined;
-}
+// ---- running ---------------------------------------------------------------------------------
 
 interface Outcome {
   case: Case;
+  /** The URL actually requested. */
+  url: string;
   status: number | 'no reply';
   problems: string[];
 }
 
-const asArray = (body: unknown): JsonObject[] => (Array.isArray(body) ? body.filter(isObject) : []);
+type Validator = ReturnType<Ajv['compile']>;
 
-function buildCases(fixture: { bareEventId: string; offerId: string }): Case[] {
-  const upcomingSortedBy = (field: string) => (body: unknown) => {
-    const values = asArray(body).map((item) => String(item[field]));
-    return values.join() === [...values].sort().join() ? undefined : `not sorted by ${field}`;
-  };
-  const allHave = (field: string, expected: string) => (body: unknown) => {
-    const bad = asArray(body).filter((item) => item[field] !== expected);
-    return bad.length ? `${bad.length} item(s) with ${field} other than ${expected}` : undefined;
-  };
-  const both = (...checks: Array<(body: unknown) => string | undefined>) => (body: unknown) =>
-    checks.map((c) => c(body)).find((problem) => problem !== undefined);
-  const includes = (id: string) => (body: unknown) =>
-    asArray(body).some((item) => item.id === id) ? undefined : `${id} is missing`;
-  const excludes = (id: string) => (body: unknown) =>
-    asArray(body).some((item) => item.id === id) ? `${id} should not be listed` : undefined;
-  const isEmptyArray = (body: unknown) => (Array.isArray(body) && body.length === 0 ? undefined : 'expected []');
-  const messageContains = (text: string) => (body: unknown) =>
-    isObject(body) && typeof body.message === 'string' && body.message.includes(text)
-      ? undefined
-      : `message does not mention "${text}"`;
-  const hasId = (id: string) => (body: unknown) => (isObject(body) && body.id === id ? undefined : `id is not ${id}`);
-
-  return [
-    // K1: GET /api/events
-    { operation: 'GET /api/events', label: 'upcoming events', url: '/api/events?status=upcoming', expectStatus: 200,
-      check: both(allHave('status', 'upcoming'), upcomingSortedBy('startsAt'), includes('evt_2001'), excludes('evt_2007')) },
-    { operation: 'GET /api/events', label: 'county filter, lower case', url: '/api/events?status=upcoming&county=nairobi', expectStatus: 200,
-      check: both(allHave('county', 'Nairobi'), includes('evt_2001'), excludes('evt_2006')) },
-    { operation: 'GET /api/events', label: 'county filter, upper case', url: '/api/events?status=upcoming&county=MOMBASA', expectStatus: 200,
-      check: both(allHave('county', 'Mombasa'), includes('evt_2006')) },
-    { operation: 'GET /api/events', label: 'real county with no events', url: '/api/events?status=upcoming&county=Turkana', expectStatus: 200,
-      check: isEmptyArray },
-    { operation: 'GET /api/events', label: 'status missing', url: '/api/events', expectStatus: 400,
-      check: messageContains('status is required') },
-    { operation: 'GET /api/events', label: 'status not upcoming', url: '/api/events?status=completed', expectStatus: 400,
-      check: messageContains('status must be upcoming') },
-    { operation: 'GET /api/events', label: 'county is not a county', url: '/api/events?status=upcoming&county=Narnia', expectStatus: 400,
-      check: messageContains('47 counties') },
-
-    // K1: GET /api/events/{eventId}
-    { operation: 'GET /api/events/{eventId}', label: 'an upcoming event', url: '/api/events/evt_2001', expectStatus: 200,
-      check: hasId('evt_2001') },
-    { operation: 'GET /api/events/{eventId}', label: 'an event that is over', url: '/api/events/evt_2007', expectStatus: 200,
-      check: (body) => (isObject(body) && body.status === 'completed' ? undefined : 'status is not completed') },
-    { operation: 'GET /api/events/{eventId}', label: 'unknown id', url: '/api/events/evt_9999', expectStatus: 404,
-      check: messageContains('evt_9999') },
-
-    // K2: GET /api/events/{eventId}/roles
-    { operation: 'GET /api/events/{eventId}/roles', label: 'an event with roles', url: '/api/events/evt_2001/roles', expectStatus: 200,
-      check: both(
-        (body) => (asArray(body).length === 2 ? undefined : 'expected 2 roles'),
-        (body) => (asArray(body).every((r) => r.eventId === 'evt_2001') ? undefined : 'a role belongs to another event'),
-      ) },
-    { operation: 'GET /api/events/{eventId}/roles', label: 'an event with no roles', url: `/api/events/${fixture.bareEventId}/roles`, expectStatus: 200,
-      check: isEmptyArray },
-    { operation: 'GET /api/events/{eventId}/roles', label: 'unknown event', url: '/api/events/evt_9999/roles', expectStatus: 404,
-      check: messageContains('evt_9999') },
-
-    // K4: GET /api/offers/{offerId}
-    { operation: 'GET /api/offers/{offerId}', label: 'a pending offer', url: `/api/offers/${fixture.offerId}`, expectStatus: 200,
-      check: both(hasId(fixture.offerId), (body) => (isObject(body) && body.status === 'pending' ? undefined : 'status is not pending')) },
-    { operation: 'GET /api/offers/{offerId}', label: 'unknown id', url: '/api/offers/ofr_9999', expectStatus: 404,
-      check: messageContains('ofr_9999') },
-  ];
-}
-
-// ---- running ---------------------------------------------------------------------------------
-
-async function snapshot(store: Store): Promise<string> {
+/** Everything stored that a request could change and that the store lets us list. */
+async function snapshot(store: Store, ctx: Ctx): Promise<string> {
   const events = await store.events.list();
   const roles = (await Promise.all(events.map((e) => store.roles.listByEvent(e.id)))).flat();
   const offers = (await Promise.all(events.map((e) => store.offers.listByEvent(e.id)))).flat();
-  return JSON.stringify({ events, roles, offers });
+  const ids = Object.values(ctx).filter((value) => value.startsWith('usr_')); // organisers seen so far
+  const trainings = (await Promise.all(ids.map((id) => store.crewTrainings.listByOrganiser(id)))).flat();
+  const checks = (await Promise.all(ids.map((id) => store.certificateChecks.listByOrganiser(id)))).flat();
+  return JSON.stringify({ events, roles, offers, trainings, checks });
 }
 
 async function runCase(
   c: Case,
+  env: Env,
   base: string,
   contract: Contract,
-  validators: Map<string, ReturnType<Ajv['compile']>>,
+  validators: Map<string, Validator>,
   ajv: Ajv,
 ): Promise<Outcome> {
   const problems: string[] = [];
+  const [method, specPath] = c.operation.split(' ') as [string, string];
+  let url = typeof c.url === 'string' ? c.url : c.operation;
+  let headers: { [name: string]: string };
+  let payload: string | undefined = c.rawBody;
+  try {
+    // A case may use values captured by earlier ones; if one is missing, say so instead of crashing.
+    url = typeof c.url === 'function' ? c.url(env.ctx) : c.url;
+    headers = { Accept: 'application/json', ...(c.headers?.(env.ctx) ?? {}) };
+    if (payload === undefined && c.body !== undefined) {
+      const value = typeof c.body === 'function' ? (c.body as (ctx: Ctx) => unknown)(env.ctx) : c.body;
+      payload = JSON.stringify(value);
+    }
+  } catch (err) {
+    return { case: c, url, status: 'no reply', problems: [err instanceof Error ? err.message : String(err)] };
+  }
+  if (payload !== undefined) headers['Content-Type'] = 'application/json';
+
+  const before = c.unchanged ? await snapshot(env.store, env.ctx) : undefined;
   let res: Response;
   try {
-    res = await fetch(base + c.url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(60_000) });
+    res = await fetch(base + url, { method, headers, body: payload, signal: AbortSignal.timeout(60_000) });
   } catch (err) {
-    return { case: c, status: 'no reply', problems: [`request failed: ${err instanceof Error ? err.message : String(err)}`] };
+    return { case: c, url, status: 'no reply', problems: [`request failed: ${err instanceof Error ? err.message : String(err)}`] };
   }
 
-  const [method, specPath] = c.operation.split(' ') as [string, string];
   const operation = contract.paths[specPath]?.[method.toLowerCase()] as ContractOperation | undefined;
   const documented = operation?.responses[String(res.status)];
   if (res.status !== c.expectStatus) problems.push(`expected status ${c.expectStatus}, got ${res.status}`);
   if (!documented) problems.push(`status ${res.status} is not documented for ${c.operation}`);
 
+  for (const [name, expected] of Object.entries(c.expectHeaders ?? {})) {
+    const actual = res.headers.get(name);
+    const ok = typeof expected === 'string' ? actual === expected : actual !== null && expected.test(actual);
+    if (!ok) problems.push(`header ${name} is "${actual}", expected ${expected}`);
+  }
+
   const text = await res.text();
   const schema = documented?.content?.['application/json']?.schema;
+  let body: unknown;
   if (schema) {
     if (!(res.headers.get('content-type') ?? '').includes('application/json')) {
       problems.push(`content-type is "${res.headers.get('content-type')}", not application/json`);
     }
-    let body: unknown;
     try {
       body = JSON.parse(text);
     } catch {
@@ -225,13 +180,21 @@ async function runCase(
         validators.set(key, validate);
       }
       if (!validate(body)) problems.push(`body does not match the schema: ${ajv.errorsText(validate.errors)}`);
-      const extra = c.check?.(body);
+      const extra = c.check?.(body, env.ctx);
       if (extra) problems.push(extra);
+      if (res.status === c.expectStatus) c.capture?.(body, env.ctx);
     }
   } else if (documented && text !== '') {
     problems.push('the contract documents no body for this status, but one was sent');
+  } else if (res.status === c.expectStatus) {
+    c.capture?.(undefined, env.ctx);
   }
-  return { case: c, status: res.status, problems };
+
+  if (c.after) problems.push(...(await c.after(env, body)));
+  if (before !== undefined && (await snapshot(env.store, env.ctx)) !== before) {
+    problems.push('the request was rejected but stored data changed');
+  }
+  return { case: c, url, status: res.status, problems };
 }
 
 // ---- report ----------------------------------------------------------------------------------
@@ -241,9 +204,10 @@ function renderReport(args: {
   examples: { checked: number; problems: string[] };
   outcomes: Outcome[];
   unverified: string[];
-  readOnlyProblem?: string;
 }): string {
-  const { version, examples, outcomes, unverified, readOnlyProblem } = args;
+  const { version, examples, outcomes, unverified } = args;
+  const checkedUnchanged = outcomes.filter((o) => o.case.unchanged).length;
+  const mutated = outcomes.filter((o) => o.problems.some((p) => p.includes('stored data changed')));
   const passed = outcomes.filter((o) => o.problems.length === 0).length;
   const mark = (ok: boolean) => (ok ? 'pass' : '**FAIL**');
   const lines: string[] = [];
@@ -252,15 +216,15 @@ function renderReport(args: {
   lines.push(`**${passed} of ${outcomes.length} cases passed.** ${unverified.length} operation(s) in the contract are not verified yet (listed at the end).`, '');
   lines.push('### Contract checks', '');
   lines.push('| Check | Result |', '|---|---|');
-  lines.push(`| openapi.yaml is valid OpenAPI 3.0 and every $ref resolves | pass |`);
+  lines.push('| openapi.yaml is valid OpenAPI 3.0 and every $ref resolves | pass |');
   lines.push(`| ${examples.checked} examples in openapi.yaml match their own schemas | ${mark(examples.problems.length === 0)} |`);
-  lines.push(`| Reading data changed nothing (store snapshot before and after) | ${readOnlyProblem ? `**FAIL**: ${readOnlyProblem}` : 'pass'} |`);
+  lines.push(`| ${checkedUnchanged} reads and rejected writes changed nothing (store compared before and after each) | ${mutated.length ? `**FAIL**: ${mutated.length} changed data` : 'pass'} |`);
   for (const problem of examples.problems) lines.push(`| (example problem) | ${problem.replace(/\|/g, '\\|')} |`);
   lines.push('', '### Requests sent', '');
   lines.push('| # | Operation | Case | Request | Expected | Got | Result |', '|---|---|---|---|---|---|---|');
   outcomes.forEach((o, i) => {
     const result = o.problems.length === 0 ? 'pass' : `**FAIL**: ${o.problems.join('; ').replace(/\|/g, '\\|')}`;
-    lines.push(`| ${i + 1} | \`${o.case.operation}\` | ${o.case.label} | \`${o.case.url}\` | ${o.case.expectStatus} | ${o.status} | ${result} |`);
+    lines.push(`| ${i + 1} | \`${o.case.operation}\` | ${o.case.label} | \`${o.url}\` | ${o.case.expectStatus} | ${o.status} | ${result} |`);
   });
   lines.push('', '### What each request is checked for', '');
   lines.push(
@@ -268,6 +232,7 @@ function renderReport(args: {
     '- the body is JSON and matches that status\'s schema: required fields present, no extra fields, types, enums, minimums',
     '- every `date-time` is ISO 8601 UTC with a `Z` and no milliseconds',
     '- case-specific rules: filtering, ordering, which ids appear, which message an error gives',
+    '- a successful write is read back to confirm it stuck; a rejected write is checked to have changed nothing',
   );
   lines.push('', '### Not yet verified', '');
   if (unverified.length === 0) lines.push('Every operation in the contract has at least one case.');
@@ -302,26 +267,27 @@ async function main(): Promise<number> {
 
   // 2. The server, with fixtures for the cases the sample data cannot cover.
   const store = await getStore();
-  const bare = await store.events.create({
-    organiser_id: 'usr_1001', name: 'Verification fixture: an event with no roles yet', type: 'other',
-    county: 'Kisumu', area: 'Milimani', venue: 'Fixture Hall', starts_at: new Date('2027-03-01T10:00:00Z'),
-    ends_at: new Date('2027-03-01T12:00:00Z'), expected_guests: 10, status: 'upcoming',
-  });
-  const offer = await store.offers.create({
-    role_id: 'rol_3001', event_id: 'evt_2001', workers_offered: 6, note: 'Verification fixture offer',
-  });
-
   const server = createServer();
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const ctx: Ctx = {};
+  const env: Env = {
+    ctx,
+    store,
+    get: async (p, token) => {
+      const res = await fetch(base + p, {
+        headers: token ? { Accept: 'application/json', Authorization: `Bearer ${token}` } : { Accept: 'application/json' },
+      });
+      const raw = await res.text();
+      return { status: res.status, body: raw ? JSON.parse(raw) : undefined };
+    },
+  };
 
-  // 3. Every case.
-  const before = await snapshot(store);
-  const cases = buildCases({ bareEventId: bare.id, offerId: offer.id });
-  const validators = new Map<string, ReturnType<Ajv['compile']>>();
+  // 3. Every case, in order: later cases use tokens and ids captured by earlier ones.
+  const cases = await buildCases(env);
+  const validators = new Map<string, Validator>();
   const outcomes: Outcome[] = [];
-  for (const c of cases) outcomes.push(await runCase(c, base, contract, validators, ajv));
-  const readOnlyProblem = (await snapshot(store)) === before ? undefined : 'a GET changed stored data';
+  for (const c of cases) outcomes.push(await runCase(c, env, base, contract, validators, ajv));
 
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -337,12 +303,11 @@ async function main(): Promise<number> {
 
   // 5. Console summary and VERIFICATION.md.
   for (const o of outcomes) {
-    console.log(`${o.problems.length === 0 ? 'PASS' : 'FAIL'}  ${o.case.operation.padEnd(34)} ${o.case.label}  [${o.status}]`);
+    console.log(`${o.problems.length === 0 ? 'PASS' : 'FAIL'}  ${o.case.operation.padEnd(40)} ${o.case.label}  [${o.status}]`);
     for (const problem of o.problems) console.log(`      ${problem}`);
   }
   console.log(`contract: valid OpenAPI; examples: ${examples.checked} checked, ${examples.problems.length} problem(s)`);
   for (const problem of examples.problems) console.log(`      ${problem}`);
-  if (readOnlyProblem) console.log(`FAIL  ${readOnlyProblem}`);
   if (unverified.length) console.log(`not yet verified: ${unverified.join(', ')}`);
 
   const reportFile = path.join(root, 'VERIFICATION.md');
@@ -350,11 +315,11 @@ async function main(): Promise<number> {
   const head = existing.split('\n## Latest run')[0].replace(/\n*Not generated yet\.\s*$/, '').trimEnd();
   await fs.writeFile(
     reportFile,
-    `${head}\n\n${renderReport({ version: contract.info.version, examples, outcomes, unverified, readOnlyProblem })}`,
+    `${head}\n\n${renderReport({ version: contract.info.version, examples, outcomes, unverified })}`,
   );
 
   const failed = outcomes.filter((o) => o.problems.length > 0).length;
-  const ok = failed === 0 && examples.problems.length === 0 && !readOnlyProblem;
+  const ok = failed === 0 && examples.problems.length === 0;
   console.log(ok ? `\nAll ${outcomes.length} cases passed. VERIFICATION.md written.` : `\n${failed} case(s) failed. VERIFICATION.md written.`);
   return ok ? 0 : 1;
 }

@@ -6,9 +6,9 @@ The script starts the server with the in-memory store, sends real requests to ev
 
 ## Latest run
 
-Run on 2026-10-20T17:32:09Z against contract version 0.1.0.
+Run on 2026-10-20T17:37:40Z against contract version 0.1.0.
 
-**15 of 15 cases passed.** 17 operation(s) in the contract are not verified yet (listed at the end).
+**32 of 32 cases passed.** 13 operation(s) in the contract are not verified yet (listed at the end).
 
 ### Contract checks
 
@@ -16,7 +16,7 @@ Run on 2026-10-20T17:32:09Z against contract version 0.1.0.
 |---|---|
 | openapi.yaml is valid OpenAPI 3.0 and every $ref resolves | pass |
 | 102 examples in openapi.yaml match their own schemas | pass |
-| Reading data changed nothing (store snapshot before and after) | pass |
+| 28 reads and rejected writes changed nothing (store compared before and after each) | pass |
 
 ### Requests sent
 
@@ -37,6 +37,23 @@ Run on 2026-10-20T17:32:09Z against contract version 0.1.0.
 | 13 | `GET /api/events/{eventId}/roles` | unknown event | `/api/events/evt_9999/roles` | 404 | 404 | pass |
 | 14 | `GET /api/offers/{offerId}` | a pending offer | `/api/offers/ofr_4001` | 200 | 200 | pass |
 | 15 | `GET /api/offers/{offerId}` | unknown id | `/api/offers/ofr_9999` | 404 | 404 | pass |
+| 16 | `POST /api/auth/register` | a new organiser | `/api/auth/register` | 201 | 201 | pass |
+| 17 | `POST /api/auth/register` | a second organiser | `/api/auth/register` | 201 | 201 | pass |
+| 18 | `POST /api/auth/register` | email already taken (other letter case) | `/api/auth/register` | 409 | 409 | pass |
+| 19 | `POST /api/auth/register` | email without @ | `/api/auth/register` | 400 | 400 | pass |
+| 20 | `POST /api/auth/register` | password too short | `/api/auth/register` | 400 | 400 | pass |
+| 21 | `POST /api/auth/register` | unknown field | `/api/auth/register` | 400 | 400 | pass |
+| 22 | `POST /api/auth/register` | malformed JSON | `/api/auth/register` | 400 | 400 | pass |
+| 23 | `POST /api/auth/login` | correct password | `/api/auth/login` | 200 | 200 | pass |
+| 24 | `POST /api/auth/login` | wrong password | `/api/auth/login` | 401 | 401 | pass |
+| 25 | `POST /api/auth/login` | unknown email gives the same answer | `/api/auth/login` | 401 | 401 | pass |
+| 26 | `POST /api/auth/login` | password missing | `/api/auth/login` | 400 | 400 | pass |
+| 27 | `GET /api/me` | the logged-in organiser | `/api/me` | 200 | 200 | pass |
+| 28 | `GET /api/me` | no token | `/api/me` | 401 | 401 | pass |
+| 29 | `GET /api/me` | a token that was never issued | `/api/me` | 401 | 401 | pass |
+| 30 | `POST /api/auth/logout` | ends that login | `/api/auth/logout` | 204 | 204 | pass |
+| 31 | `POST /api/auth/logout` | the same token again | `/api/auth/logout` | 401 | 401 | pass |
+| 32 | `POST /api/auth/logout` | no token | `/api/auth/logout` | 401 | 401 | pass |
 
 ### What each request is checked for
 
@@ -44,6 +61,7 @@ Run on 2026-10-20T17:32:09Z against contract version 0.1.0.
 - the body is JSON and matches that status's schema: required fields present, no extra fields, types, enums, minimums
 - every `date-time` is ISO 8601 UTC with a `Z` and no milliseconds
 - case-specific rules: filtering, ordering, which ids appear, which message an error gives
+- a successful write is read back to confirm it stuck; a rejected write is checked to have changed nothing
 
 ### Not yet verified
 
@@ -55,10 +73,6 @@ These operations are in `openapi.yaml` but have no case yet. They are not implem
 - `POST /api/offers`
 - `DELETE /api/offers/{offerId}`
 - `PATCH /api/offers/{offerId}`
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/me`
 - `GET /api/training-options`
 - `GET /api/crew-trainings`
 - `POST /api/crew-trainings`

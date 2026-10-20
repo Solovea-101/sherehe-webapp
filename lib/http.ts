@@ -12,8 +12,8 @@ export function json<T>(status: number, body: T, headers?: HeadersInit): NextRes
   return NextResponse.json(body, { status, headers });
 }
 
-export function fail(status: number, message: string): NextResponse<ErrorBody> {
-  return json<ErrorBody>(status, { message });
+export function fail(status: number, message: string, headers?: HeadersInit): NextResponse<ErrorBody> {
+  return json<ErrorBody>(status, { message }, headers);
 }
 
 export function noContent(): NextResponse {
