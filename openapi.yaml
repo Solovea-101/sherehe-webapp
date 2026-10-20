@@ -1,0 +1,272 @@
+# Sherehe API contract, draft 0.1.0 (partner-facing endpoints 1-6 and 14).
+# TODO Week 4: add the website endpoints 7-13 and 15-21 from ENDPOINT_LIST.md before handoff.
+openapi: 3.0.3
+info:
+  title: Sherehe API
+  version: 0.1.0
+  description: >
+    Events, staffing roles and staffing offers for Kazi Connect (needs K1-K5), plus the organiser
+    decision on an offer. Partner calls send an X-API-Key; organiser calls send a login token.
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+paths:
+  /api/events:
+    get:
+      summary: Upcoming events, optionally filtered by county (K1)
+      security: [{ partnerKey: [] }]
+      parameters:
+        - name: status
+          in: query
+          required: true
+          description: Only upcoming events can still be staffed.
+          schema: { type: string, enum: [upcoming] }
+        - name: county
+          in: query
+          required: false
+          description: One of Kenya's 47 counties; matching ignores case.
+          schema: { type: string, example: Nairobi }
+      responses:
+        '200':
+          description: Matching events; an empty array when nothing matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/events/{eventId}:
+    get:
+      summary: One event (K1)
+      security: [{ partnerKey: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: The event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/events/{eventId}/roles:
+    get:
+      summary: Staffing roles for one event (K2)
+      security: [{ partnerKey: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Roles for the event; an empty array when it has none
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Role' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/offers:
+    post:
+      summary: Offer workers for a role (K3)
+      security: [{ partnerKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewOffer' }
+      responses:
+        '201':
+          description: Offer created as pending
+          headers:
+            Location:
+              description: Path of the new offer
+              schema: { type: string, example: /api/offers/ofr_4001 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Offer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/offers/{offerId}:
+    get:
+      summary: One offer and its status (K4)
+      security: [{ partnerKey: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+      responses:
+        '200':
+          description: The offer
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Offer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      summary: Withdraw a pending offer (K5)
+      security: [{ partnerKey: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+      responses:
+        '204': { description: Withdrawn; the offer no longer exists }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    patch:
+      summary: Organiser accepts or declines an offer (website)
+      security: [{ organiserToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OfferDecision' }
+      responses:
+        '200':
+          description: The offer with its new status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Offer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+components:
+  securitySchemes:
+    partnerKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: One key per consuming system, issued by Sherehe (from Week 9).
+    organiserToken:
+      type: http
+      scheme: bearer
+      description: Login token from POST /api/auth/login.
+
+  parameters:
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema: { type: string, example: evt_2001 }
+    OfferId:
+      name: offerId
+      in: path
+      required: true
+      schema: { type: string, example: ofr_4001 }
+
+  responses:
+    BadRequest:
+      description: The request is invalid; nothing was changed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'workersOffered must be a whole number from 1 to the open slots' }
+    Unauthorized:
+      description: Missing or invalid key or token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Send your partner key as X-API-Key' }
+    Forbidden:
+      description: Logged in, but not the organiser of this event
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'You can only decide offers on events you created.' }
+    NotFound:
+      description: No resource with that id
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Event evt_9999 not found' }
+    Conflict:
+      description: Not allowed in the resource's current state
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Role rol_3001 is full' }
+
+  schemas:
+    Event:
+      type: object
+      required: [id, name, type, county, area, venue, startsAt, endsAt, expectedGuests, status]
+      properties:
+        id: { type: string, example: evt_2001 }
+        name: { type: string, example: 'Wanjiku and Otieno wedding' }
+        type: { type: string, enum: [wedding, conference, concert, corporate, other], example: wedding }
+        county: { type: string, example: Nairobi }
+        area: { type: string, example: Westlands }
+        venue: { type: string, example: 'Sarit Expo Centre' }
+        startsAt: { type: string, format: date-time, example: '2026-12-05T14:00:00Z' }
+        endsAt: { type: string, format: date-time, example: '2026-12-05T22:00:00Z' }
+        expectedGuests: { type: integer, minimum: 1, example: 300 }
+        status:
+          type: string
+          enum: [upcoming, completed, cancelled]
+          description: Only upcoming events accept offers.
+          example: upcoming
+
+    Role:
+      type: object
+      required: [id, eventId, title, category, headcount, filled, shiftStart, shiftEnd, payPerShift]
+      properties:
+        id: { type: string, example: rol_3001 }
+        eventId: { type: string, example: evt_2001 }
+        title: { type: string, example: Waiters }
+        category:
+          type: string
+          enum: [accommodation, campus, catering, cleaning, electrical, events, plumbing, security, tutoring]
+          example: catering
+        headcount: { type: integer, minimum: 1, example: 6 }
+        filled: { type: integer, minimum: 0, description: Workers already confirmed, example: 0 }
+        shiftStart: { type: string, format: date-time, example: '2026-12-05T13:00:00Z' }
+        shiftEnd: { type: string, format: date-time, example: '2026-12-05T23:00:00Z' }
+        payPerShift: { type: integer, minimum: 0, description: KES, example: 1500 }
+
+    NewOffer:
+      type: object
+      additionalProperties: false
+      required: [roleId, workersOffered]
+      properties:
+        roleId: { type: string, example: rol_3001 }
+        workersOffered: { type: integer, minimum: 1, example: 6 }
+        note: { type: string, maxLength: 500, example: 'Six trained catering students, all with food-hygiene certificates' }
+
+    Offer:
+      type: object
+      required: [id, roleId, eventId, workersOffered, note, status, createdAt]
+      properties:
+        id: { type: string, example: ofr_4001 }
+        roleId: { type: string, example: rol_3001 }
+        eventId: { type: string, example: evt_2001 }
+        workersOffered: { type: integer, example: 6 }
+        note: { type: string, description: Empty string when none was sent, example: 'Six trained catering students' }
+        status:
+          type: string
+          enum: [pending, accepted, declined]
+          description: pending until the organiser decides; accepted and declined are final.
+          example: pending
+        createdAt: { type: string, format: date-time, example: '2026-11-20T09:15:00Z' }
+
+    OfferDecision:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, enum: [accepted, declined], example: accepted }
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, example: 'Event evt_9999 not found' }

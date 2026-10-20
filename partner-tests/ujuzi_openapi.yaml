@@ -1,0 +1,304 @@
+# FROZEN COPY of Ujuzi's contract that partner-tests/ was written from.
+# DRAFT 0.1.0 - replace with the file Ujuzi actually hands off in Week 4, then run npm run types.
+openapi: 3.0.3
+info:
+  title: Ujuzi API
+  version: 0.1.0
+  description: >
+    Short courses, certificate checks and group training bookings for Sherehe (needs S1-S5), plus the
+    staff decision on a booking. Partner calls send an X-API-Key; staff calls send a login token.
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+paths:
+  /api/courses:
+    get:
+      summary: Courses, optionally filtered by category and county (S1)
+      security: [{ partnerKey: [] }]
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [accommodation, campus, catering, cleaning, electrical, events, plumbing, security, tutoring]
+            example: catering
+        - name: county
+          in: query
+          required: false
+          description: One of Kenya's 47 counties; matching ignores case.
+          schema: { type: string, example: Nairobi }
+      responses:
+        '200':
+          description: Matching courses; an empty array when nothing matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Course' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/courses/{courseId}:
+    get:
+      summary: One course (S1)
+      security: [{ partnerKey: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CourseId'
+      responses:
+        '200':
+          description: The course
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Course' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/certificates/{certificateNo}:
+    get:
+      summary: Check that a certificate number is real (S2)
+      security: [{ partnerKey: [] }]
+      parameters:
+        - name: certificateNo
+          in: path
+          required: true
+          schema: { type: string, pattern: '^UJZ-\d{4}-\d{5}$', example: UJZ-2026-00123 }
+      responses:
+        '200':
+          description: The certificate; holder shows first name and initial only
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CertificateCheck' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/bookings:
+    post:
+      summary: Book group training for an event crew (S3)
+      security: [{ partnerKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewBooking' }
+      responses:
+        '201':
+          description: Booking created as pending
+          headers:
+            Location:
+              description: Path of the new booking
+              schema: { type: string, example: /api/bookings/bkg_6001 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/bookings/{bookingId}:
+    get:
+      summary: One booking and its status (S4)
+      security: [{ partnerKey: [] }]
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: The booking
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      summary: Replace crew size and start date of a pending booking (S5)
+      description: Sets an absolute state; sending the same body twice gives the same result.
+      security: [{ partnerKey: [] }]
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingUpdate' }
+      responses:
+        '200':
+          description: The updated booking
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      summary: Cancel a pending booking (S5)
+      security: [{ partnerKey: [] }]
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '204': { description: Cancelled; the booking no longer exists }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    patch:
+      summary: Staff confirm or decline a booking (website)
+      security: [{ staffToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingDecision' }
+      responses:
+        '200':
+          description: The booking with its new status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+components:
+  securitySchemes:
+    partnerKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: One key per consuming system, issued by Ujuzi (from Week 9).
+    staffToken:
+      type: http
+      scheme: bearer
+      description: Staff login token from POST /api/auth/login.
+
+  parameters:
+    CourseId:
+      name: courseId
+      in: path
+      required: true
+      schema: { type: string, example: crs_501 }
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema: { type: string, example: bkg_6001 }
+
+  responses:
+    BadRequest:
+      description: The request is invalid; nothing was changed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'preferredStart must be a future date-time, for example 2026-11-28T08:00:00Z' }
+    Unauthorized:
+      description: Missing or invalid key or token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Send your partner key as X-API-Key' }
+    Forbidden:
+      description: Logged in, but not staff at this course's centre
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Only staff at this centre can decide its bookings.' }
+    NotFound:
+      description: No resource with that id
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Course crs_999 not found' }
+    Conflict:
+      description: Not allowed in the resource's current state
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Booking bkg_6001 is confirmed; only pending bookings can be changed' }
+
+  schemas:
+    Course:
+      type: object
+      required: [id, title, category, centre, county, area, durationWeeks, feeKes, nextStart, certificateLevel]
+      properties:
+        id: { type: string, example: crs_501 }
+        title: { type: string, example: 'Food hygiene and event service' }
+        category:
+          type: string
+          enum: [accommodation, campus, catering, cleaning, electrical, events, plumbing, security, tutoring]
+          example: catering
+        centre:
+          type: object
+          required: [id, name]
+          properties:
+            id: { type: string, example: cen_11 }
+            name: { type: string, example: 'Westlands Skills Centre' }
+        county: { type: string, example: Nairobi }
+        area: { type: string, example: Westlands }
+        durationWeeks: { type: integer, minimum: 1, example: 2 }
+        feeKes: { type: integer, minimum: 0, description: Per trainee, KES, example: 3500 }
+        nextStart: { type: string, format: date-time, example: '2026-11-23T07:00:00Z' }
+        certificateLevel: { type: string, enum: [short-course, grade-III, grade-II, grade-I], example: short-course }
+
+    CertificateCheck:
+      type: object
+      required: [certificateNo, valid, courseTitle, level, issuedOn, holder]
+      properties:
+        certificateNo: { type: string, example: UJZ-2026-00123 }
+        valid: { type: boolean, description: false when revoked, example: true }
+        courseTitle: { type: string, example: 'Food hygiene and event service' }
+        level: { type: string, enum: [short-course, grade-III, grade-II, grade-I], example: short-course }
+        issuedOn: { type: string, format: date, example: '2026-08-14' }
+        holder: { type: string, description: First name and initial only, example: 'Achieng O.' }
+
+    NewBooking:
+      type: object
+      additionalProperties: false
+      required: [courseId, crewSize, preferredStart, eventName]
+      properties:
+        courseId: { type: string, example: crs_501 }
+        crewSize: { type: integer, minimum: 1, maximum: 40, example: 6 }
+        preferredStart: { type: string, format: date-time, example: '2026-11-28T08:00:00Z' }
+        eventName: { type: string, maxLength: 120, example: 'Wanjiku and Otieno wedding' }
+
+    BookingUpdate:
+      type: object
+      additionalProperties: false
+      required: [crewSize, preferredStart]
+      properties:
+        crewSize: { type: integer, minimum: 1, maximum: 40, example: 8 }
+        preferredStart: { type: string, format: date-time, example: '2026-11-29T08:00:00Z' }
+
+    Booking:
+      type: object
+      required: [id, courseId, eventName, crewSize, preferredStart, status, createdAt]
+      properties:
+        id: { type: string, example: bkg_6001 }
+        courseId: { type: string, example: crs_501 }
+        eventName: { type: string, example: 'Wanjiku and Otieno wedding' }
+        crewSize: { type: integer, example: 6 }
+        preferredStart: { type: string, format: date-time, example: '2026-11-28T08:00:00Z' }
+        status:
+          type: string
+          enum: [pending, confirmed, declined]
+          description: pending until centre staff decide; confirmed and declined are final.
+          example: pending
+        createdAt: { type: string, format: date-time, example: '2026-11-20T10:00:00Z' }
+
+    BookingDecision:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, enum: [confirmed, declined], example: confirmed }
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, example: 'Course crs_999 not found' }
