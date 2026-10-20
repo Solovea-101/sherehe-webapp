@@ -154,7 +154,64 @@ describe('memory store: offers', () => {
   it('creates offers as pending, starting at ofr_4001', async () => {
     const created = await store.offers.create(offer);
     expect(created).toMatchObject({ id: 'ofr_4001', status: 'pending', workers_offered: 6 });
-    expect((await store.offers.create(offer)).id).toBe('ofr_4002');
+    expect((await store.offers.create({ ...offer, role_id: 'rol_3002' })).id).toBe('ofr_4002');
+  });
+
+  it('allows only one pending offer per role, until it is decided or withdrawn', async () => {
+    const first = await store.offers.create(offer);
+    await expect(store.offers.create(offer)).rejects.toBeInstanceOf(StoreConflictError);
+    expect((await store.offers.findPendingByRole('rol_3001'))?.id).toBe(first.id);
+
+    await store.offers.decide(first.id, 'declined');
+    expect(await store.offers.findPendingByRole('rol_3001')).toBeNull();
+    const second = await store.offers.create(offer); // the role is open to offers again
+    expect(second.id).toBe('ofr_4002');
+
+    await store.offers.withdraw(second.id);
+    expect((await store.offers.create(offer)).status).toBe('pending');
+  });
+
+  describe('decide', () => {
+    it('accepting fills places on the role; declining does not', async () => {
+      const a = await store.offers.create({ ...offer, workers_offered: 4 });
+      const result = await store.offers.decide(a.id, 'accepted');
+      expect(result).toMatchObject({ kind: 'ok', offer: { id: a.id, status: 'accepted' } });
+      expect((await store.roles.get('rol_3001'))?.filled).toBe(4);
+
+      const b = await store.offers.create({ ...offer, workers_offered: 2 });
+      await store.offers.decide(b.id, 'declined');
+      expect((await store.roles.get('rol_3001'))?.filled).toBe(4);
+    });
+
+    it('refuses to overfill a role and leaves the offer pending', async () => {
+      const big = await store.offers.create({ ...offer, workers_offered: 6 });
+      await store.offers.decide(big.id, 'accepted'); // rol_3001 is now full (6 of 6)
+      const late = await store.offers.create({ ...offer, workers_offered: 1 });
+      expect(await store.offers.decide(late.id, 'accepted')).toEqual({ kind: 'no_room', openPlaces: 0 });
+      expect((await store.offers.get(late.id))?.status).toBe('pending');
+      expect((await store.roles.get('rol_3001'))?.filled).toBe(6);
+    });
+
+    it('decisions are final, and unknown offers are reported', async () => {
+      const a = await store.offers.create(offer);
+      await store.offers.decide(a.id, 'declined');
+      expect(await store.offers.decide(a.id, 'accepted')).toMatchObject({ kind: 'not_pending', offer: { status: 'declined' } });
+      expect(await store.offers.decide('ofr_9999', 'accepted')).toEqual({ kind: 'not_found' });
+    });
+  });
+
+  describe('withdraw', () => {
+    it('removes a pending offer only', async () => {
+      const a = await store.offers.create(offer);
+      expect(await store.offers.withdraw(a.id)).toEqual({ kind: 'ok' });
+      expect(await store.offers.get(a.id)).toBeNull();
+      expect(await store.offers.withdraw(a.id)).toEqual({ kind: 'not_found' });
+
+      const b = await store.offers.create(offer);
+      await store.offers.decide(b.id, 'accepted');
+      expect(await store.offers.withdraw(b.id)).toMatchObject({ kind: 'not_pending', offer: { status: 'accepted' } });
+      expect((await store.offers.get(b.id))?.status).toBe('accepted');
+    });
   });
 
   it('refuses an offer on a role or event that does not exist', async () => {
@@ -181,6 +238,69 @@ describe('memory store: offers', () => {
     const b = await store.offers.create({ ...offer, role_id: 'rol_3002', workers_offered: 2 });
     expect((await store.offers.listByEvent('evt_2001')).map((o) => o.id)).toEqual([a.id, b.id]);
     expect(await store.offers.listByEvent('evt_2002')).toEqual([]);
+  });
+});
+
+describe('memory store: crew trainings', () => {
+  let store: Store;
+  beforeEach(() => {
+    store = createMemoryStore();
+  });
+  const training = {
+    organiser_id: 'usr_1001', event_id: 'evt_2001', course_id: 'crs_501', ujuzi_booking_id: 'bkg_6001',
+    crew_size: 6, preferred_start: new Date('2026-11-28T08:00:00Z'), status: 'pending' as const,
+  };
+
+  it('creates, reads, updates and deletes', async () => {
+    const created = await store.crewTrainings.create(training);
+    expect(created).toMatchObject({ id: 'trn_5001', status: 'pending', crew_size: 6 });
+    expect(created.created_at).toEqual(created.updated_at);
+    expect(await store.crewTrainings.get('trn_5001')).toEqual(created);
+
+    const updated = await store.crewTrainings.update(created.id, { crew_size: 8, status: 'confirmed' });
+    expect(updated).toMatchObject({ crew_size: 8, status: 'confirmed', course_id: 'crs_501' });
+    expect(updated!.updated_at.getTime()).toBeGreaterThanOrEqual(created.updated_at.getTime());
+
+    expect(await store.crewTrainings.delete(created.id)).toBe(true);
+    expect(await store.crewTrainings.get(created.id)).toBeNull();
+    expect(await store.crewTrainings.delete(created.id)).toBe(false);
+    expect(await store.crewTrainings.update(created.id, { crew_size: 1 })).toBeNull();
+  });
+
+  it('lists an organiser’s trainings newest first, and every pending one for the poller', async () => {
+    const other = await store.users.create({ email: 'o@example.com', name: 'O', password_hash: 'h' });
+    const a = await store.crewTrainings.create(training);
+    const b = await store.crewTrainings.create({ ...training, ujuzi_booking_id: 'bkg_6002' });
+    const c = await store.crewTrainings.create({ ...training, ujuzi_booking_id: 'bkg_6003', organiser_id: other.id });
+    await store.crewTrainings.update(b.id, { status: 'declined' });
+
+    expect((await store.crewTrainings.listByOrganiser('usr_1001')).map((t) => t.id)).toEqual([b.id, a.id]);
+    expect((await store.crewTrainings.listPending()).map((t) => t.id)).toEqual([a.id, c.id]);
+    expect(await store.crewTrainings.listByOrganiser('usr_9999')).toEqual([]);
+  });
+
+  it('refuses a missing organiser or event, and a booking recorded twice', async () => {
+    await expect(store.crewTrainings.create({ ...training, organiser_id: 'usr_9999' })).rejects.toThrow('does not exist');
+    await expect(store.crewTrainings.create({ ...training, event_id: 'evt_9999' })).rejects.toThrow('does not exist');
+    await store.crewTrainings.create(training);
+    await expect(store.crewTrainings.create(training)).rejects.toBeInstanceOf(StoreConflictError);
+  });
+});
+
+describe('memory store: certificate checks', () => {
+  it('records checks and lists an organiser’s newest first', async () => {
+    const store = createMemoryStore();
+    const check = {
+      organiser_id: 'usr_1001', certificate_no: 'UJZ-2026-00123', valid: true, course_title: 'Food hygiene',
+      level: 'short-course' as const, issued_on: '2026-08-14', holder: 'Achieng O.',
+    };
+    const first = await store.certificateChecks.create(check);
+    const second = await store.certificateChecks.create({ ...check, valid: false });
+    expect(first).toMatchObject({ id: 'chk_7001', valid: true });
+    expect(first.checked_at).toBeInstanceOf(Date);
+    expect((await store.certificateChecks.listByOrganiser('usr_1001')).map((c) => c.id)).toEqual([second.id, first.id]);
+    expect(await store.certificateChecks.listByOrganiser('usr_9999')).toEqual([]);
+    await expect(store.certificateChecks.create({ ...check, organiser_id: 'usr_9999' })).rejects.toThrow('does not exist');
   });
 });
 

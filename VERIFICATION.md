@@ -6,16 +6,16 @@ The script starts the server with the in-memory store, sends real requests to ev
 
 ## Latest run
 
-Run on 2026-10-20T17:26:48Z against contract version 0.1.0.
+Run on 2026-10-20T17:32:09Z against contract version 0.1.0.
 
-**15 of 15 cases passed.** 3 operation(s) in the contract are not verified yet (listed at the end).
+**15 of 15 cases passed.** 17 operation(s) in the contract are not verified yet (listed at the end).
 
 ### Contract checks
 
 | Check | Result |
 |---|---|
 | openapi.yaml is valid OpenAPI 3.0 and every $ref resolves | pass |
-| 40 examples in openapi.yaml match their own schemas | pass |
+| 102 examples in openapi.yaml match their own schemas | pass |
 | Reading data changed nothing (store snapshot before and after) | pass |
 
 ### Requests sent
@@ -49,6 +49,20 @@ Run on 2026-10-20T17:26:48Z against contract version 0.1.0.
 
 These operations are in `openapi.yaml` but have no case yet. They are not implemented in this phase, so nothing is claimed about them.
 
+- `POST /api/events`
+- `POST /api/events/{eventId}/roles`
+- `GET /api/events/{eventId}/offers`
 - `POST /api/offers`
 - `DELETE /api/offers/{offerId}`
 - `PATCH /api/offers/{offerId}`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/me`
+- `GET /api/training-options`
+- `GET /api/crew-trainings`
+- `POST /api/crew-trainings`
+- `GET /api/crew-trainings/{trainingId}`
+- `PUT /api/crew-trainings/{trainingId}`
+- `DELETE /api/crew-trainings/{trainingId}`
+- `POST /api/certificate-checks`

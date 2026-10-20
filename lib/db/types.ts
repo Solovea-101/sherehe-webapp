@@ -7,6 +7,8 @@ export type EventType = Schemas['Event']['type'];
 export type EventStatus = Schemas['Event']['status'];
 export type RoleCategory = Schemas['Role']['category'];
 export type OfferStatus = Schemas['Offer']['status'];
+export type CrewTrainingStatus = Schemas['CrewTraining']['status'];
+export type CertificateLevel = Schemas['CertificateCheckRecord']['level'];
 
 // Row types mirror the tables in migrations/: snake_case, timestamps as Date. lib/mappers.ts turns
 // them into the camelCase contract shapes.
@@ -63,19 +65,60 @@ export interface OfferRow {
   created_at: Date;
 }
 
+export interface CrewTrainingRow {
+  id: string; // trn_5001
+  organiser_id: string;
+  event_id: string;
+  course_id: string; // Ujuzi's course id
+  ujuzi_booking_id: string; // Ujuzi's booking id; only ujuziClient.ts and the poller read it
+  crew_size: number;
+  preferred_start: Date;
+  status: CrewTrainingStatus; // pending until Ujuzi's centre decides
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CertificateCheckRow {
+  id: string; // chk_7001
+  organiser_id: string;
+  certificate_no: string;
+  valid: boolean; // false when Ujuzi has revoked it
+  course_title: string;
+  level: CertificateLevel;
+  issued_on: string; // calendar date, YYYY-MM-DD
+  holder: string; // first name and initial only, as Ujuzi sends it
+  checked_at: Date;
+}
+
 // What a caller supplies; the store assigns id and created_at (and status 'pending' for offers).
 export type NewUser = Pick<UserRow, 'email' | 'name' | 'password_hash'>;
 export type NewSession = Pick<SessionRow, 'token_hash' | 'user_id' | 'expires_at'>;
 export type NewEvent = Omit<EventRow, 'id' | 'created_at'>;
 export type NewRole = Omit<RoleRow, 'id' | 'created_at'>;
 export type NewOffer = Pick<OfferRow, 'role_id' | 'event_id' | 'workers_offered' | 'note'>;
+export type NewCrewTraining = Omit<CrewTrainingRow, 'id' | 'created_at' | 'updated_at'>;
+export type CrewTrainingChanges = Partial<Pick<CrewTrainingRow, 'crew_size' | 'preferred_start' | 'status'>>;
+export type NewCertificateCheck = Omit<CertificateCheckRow, 'id' | 'checked_at'>;
+
+/** What happened when an organiser decided an offer. Accepting also fills places on the role. */
+export type DecideResult =
+  | { kind: 'ok'; offer: OfferRow }
+  | { kind: 'not_found' }
+  | { kind: 'not_pending'; offer: OfferRow }
+  | { kind: 'no_room'; openPlaces: number }; // accepting would put the role over its headcount
+
+/** What happened when a pending offer was withdrawn. */
+export type WithdrawResult =
+  | { kind: 'ok' }
+  | { kind: 'not_found' }
+  | { kind: 'not_pending'; offer: OfferRow };
 
 export interface EventFilter {
   status?: EventStatus;
   county?: string; // matched ignoring case
 }
 
-/** Thrown when a write would break a uniqueness rule (for example a second account per email). */
+/** Thrown when a write would break a uniqueness rule (a second account per email, a second pending offer on a role). */
 export class StoreConflictError extends Error {
   constructor(message: string) {
     super(message);
@@ -113,8 +156,25 @@ export interface Store {
     create(input: NewOffer): Promise<OfferRow>; // always pending
     get(id: string): Promise<OfferRow | null>;
     listByEvent(eventId: string): Promise<OfferRow[]>; // oldest first
+    findPendingByRole(roleId: string): Promise<OfferRow | null>;
     setStatus(id: string, status: OfferStatus): Promise<OfferRow | null>;
     delete(id: string): Promise<boolean>;
+    // These two check the offer's state and change it in one step, so two requests arriving
+    // together (accept and withdraw, say) cannot both win.
+    decide(id: string, status: 'accepted' | 'declined'): Promise<DecideResult>; // accepting fills the role
+    withdraw(id: string): Promise<WithdrawResult>; // only a pending offer can be withdrawn
+  };
+  crewTrainings: {
+    create(input: NewCrewTraining): Promise<CrewTrainingRow>;
+    get(id: string): Promise<CrewTrainingRow | null>;
+    listByOrganiser(organiserId: string): Promise<CrewTrainingRow[]>; // newest first
+    listPending(): Promise<CrewTrainingRow[]>; // every organiser's, for the poller
+    update(id: string, changes: CrewTrainingChanges): Promise<CrewTrainingRow | null>;
+    delete(id: string): Promise<boolean>;
+  };
+  certificateChecks: {
+    create(input: NewCertificateCheck): Promise<CertificateCheckRow>;
+    listByOrganiser(organiserId: string): Promise<CertificateCheckRow[]>; // newest first
   };
   close(): Promise<void>;
 }
@@ -125,4 +185,6 @@ export interface SeedData {
   events: EventRow[];
   roles: RoleRow[];
   offers: OfferRow[];
+  crewTrainings?: CrewTrainingRow[];
+  certificateChecks?: CertificateCheckRow[];
 }

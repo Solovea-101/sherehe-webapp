@@ -1,12 +1,15 @@
 # Sherehe API contract, draft 0.1.0 (partner-facing endpoints 1-6 and 14).
-# TODO Week 4: add the website endpoints 7-13 and 15-21 from ENDPOINT_LIST.md before handoff.
+# TODO Week 4: the website endpoints 7-13 and 15-21 below were DRAFTED BY THE CODING AGENT (Phase 2) from
+# ENDPOINT_LIST.md and Ujuzi's draft contract. The team must review every shape and limit before handoff.
 openapi: 3.0.3
 info:
   title: Sherehe API
   version: 0.1.0
   description: >
     Events, staffing roles and staffing offers for Kazi Connect (needs K1-K5), plus the organiser
-    decision on an offer. Partner calls send an X-API-Key; organiser calls send a login token.
+    decision on an offer and the website's own endpoints: accounts, creating events and roles, and
+    booking crew training and checking certificates through Ujuzi. Partner calls send an X-API-Key;
+    organiser calls send a login token.
 servers:
   - url: http://localhost:3000
     description: Local development server
@@ -35,6 +38,26 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      summary: Organiser creates an event (website)
+      security: [{ organiserToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewEvent' }
+      responses:
+        '201':
+          description: Event created as upcoming, owned by the logged-in organiser
+          headers:
+            Location:
+              description: Path of the new event
+              schema: { type: string, example: /api/events/evt_2008 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
@@ -68,6 +91,45 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/Role' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      summary: Organiser adds a staffing role to their event (website)
+      security: [{ organiserToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewRole' }
+      responses:
+        '201':
+          description: The new role, with nobody confirmed yet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Role' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/events/{eventId}/offers:
+    get:
+      summary: Offers on the organiser's own event (website)
+      security: [{ organiserToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Offers on the event, oldest first; an empty array when there are none
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Offer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /api/offers:
@@ -140,6 +202,200 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /api/auth/register:
+    post:
+      summary: Create an organiser account and log it in (website)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewAccount' }
+      responses:
+        '201':
+          description: Account created; the token is ready to use
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/auth/login:
+    post:
+      summary: Log in and get a token (website)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Credentials' }
+      responses:
+        '200':
+          description: Logged in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/auth/logout:
+    post:
+      summary: Log out, so the token stops working (website)
+      security: [{ organiserToken: [] }]
+      responses:
+        '204': { description: Logged out }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/me:
+    get:
+      summary: The logged-in organiser (website)
+      security: [{ organiserToken: [] }]
+      responses:
+        '200':
+          description: The organiser
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/training-options:
+    get:
+      summary: Ujuzi courses that fit a role, read through Ujuzi (website, S1)
+      security: [{ organiserToken: [] }]
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [accommodation, campus, catering, cleaning, electrical, events, plumbing, security, tutoring]
+            example: catering
+        - name: county
+          in: query
+          required: false
+          description: One of Kenya's 47 counties; matching ignores case.
+          schema: { type: string, example: Nairobi }
+      responses:
+        '200':
+          description: Matching courses; an empty array when nothing matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TrainingOption' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+
+  /api/crew-trainings:
+    get:
+      summary: The logged-in organiser's crew trainings (website, S4)
+      security: [{ organiserToken: [] }]
+      responses:
+        '200':
+          description: Newest first; an empty array when there are none. Status is refreshed from Ujuzi every few minutes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CrewTraining' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      summary: Book crew training for one of the organiser's events at Ujuzi (website, S3)
+      security: [{ organiserToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewCrewTraining' }
+      responses:
+        '201':
+          description: Booking made; pending until the training centre decides
+          headers:
+            Location:
+              description: Path of the new crew training
+              schema: { type: string, example: /api/crew-trainings/trn_5001 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CrewTraining' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+
+  /api/crew-trainings/{trainingId}:
+    get:
+      summary: One crew training and its status (website, S4)
+      security: [{ organiserToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TrainingId'
+      responses:
+        '200':
+          description: The crew training
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CrewTraining' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      summary: Replace crew size and start date of a pending crew training (website, S5)
+      description: Sets an absolute state; sending the same body twice gives the same result.
+      security: [{ organiserToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TrainingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CrewTrainingUpdate' }
+      responses:
+        '200':
+          description: The updated crew training
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CrewTraining' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+    delete:
+      summary: Cancel a pending crew training (website, S5)
+      security: [{ organiserToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TrainingId'
+      responses:
+        '204': { description: Cancelled; the crew training no longer exists }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+
+  /api/certificate-checks:
+    post:
+      summary: Check a crew member's certificate with Ujuzi and record the check (website, S2)
+      security: [{ organiserToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewCertificateCheck' }
+      responses:
+        '201':
+          description: The certificate as Ujuzi reports it right now, recorded as a check
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CertificateCheckRecord' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+
 components:
   securitySchemes:
     partnerKey:
@@ -163,6 +419,11 @@ components:
       in: path
       required: true
       schema: { type: string, example: ofr_4001 }
+    TrainingId:
+      name: trainingId
+      in: path
+      required: true
+      schema: { type: string, example: trn_5001 }
 
   responses:
     BadRequest:
@@ -195,6 +456,12 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { message: 'Role rol_3001 is full' }
+    BadGateway:
+      description: Ujuzi could not be reached or gave an answer we cannot use; nothing was changed here
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Ujuzi is not responding right now. Try again in a minute.' }
 
   schemas:
     Event:
@@ -270,3 +537,137 @@ components:
       required: [message]
       properties:
         message: { type: string, example: 'Event evt_9999 not found' }
+
+    User:
+      type: object
+      required: [id, email, name]
+      properties:
+        id: { type: string, example: usr_1002 }
+        email: { type: string, description: Stored in lower case, example: njeri@example.com }
+        name: { type: string, example: Njeri Kamau }
+
+    AuthResult:
+      type: object
+      required: [token, expiresAt, user]
+      properties:
+        token: { type: string, description: 'Send as "Authorization: Bearer TOKEN" on organiser calls', example: 'Qk3x9sT1u0V2yq8c7Wm4eH6jLZpR5aNfDg1oIbXvYtE' }
+        expiresAt: { type: string, format: date-time, example: '2026-11-27T09:15:00Z' }
+        user: { $ref: '#/components/schemas/User' }
+
+    NewAccount:
+      type: object
+      additionalProperties: false
+      required: [email, name, password]
+      properties:
+        email: { type: string, maxLength: 254, example: njeri@example.com }
+        name: { type: string, minLength: 1, maxLength: 100, example: Njeri Kamau }
+        password: { type: string, minLength: 8, maxLength: 128, example: 'correct horse battery' }
+
+    Credentials:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, maxLength: 254, example: njeri@example.com }
+        password: { type: string, maxLength: 128, example: 'correct horse battery' }
+
+    NewEvent:
+      type: object
+      additionalProperties: false
+      required: [name, type, county, area, venue, startsAt, endsAt, expectedGuests]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120, example: 'Njeri and Kamau wedding' }
+        type: { type: string, enum: [wedding, conference, concert, corporate, other], example: wedding }
+        county: { type: string, description: "One of Kenya's 47 counties. Any letter case is accepted; the official spelling is stored.", example: Nairobi }
+        area: { type: string, minLength: 1, maxLength: 80, example: Kilimani }
+        venue: { type: string, minLength: 1, maxLength: 120, example: 'Kilimani Gardens' }
+        startsAt: { type: string, format: date-time, description: Must be in the future, example: '2027-01-16T14:00:00Z' }
+        endsAt: { type: string, format: date-time, description: Must be after startsAt, example: '2027-01-16T22:00:00Z' }
+        expectedGuests: { type: integer, minimum: 1, maximum: 100000, example: 200 }
+
+    NewRole:
+      type: object
+      additionalProperties: false
+      required: [title, category, headcount, shiftStart, shiftEnd, payPerShift]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 80, example: 'Security guards' }
+        category:
+          type: string
+          enum: [accommodation, campus, catering, cleaning, electrical, events, plumbing, security, tutoring]
+          example: security
+        headcount: { type: integer, minimum: 1, maximum: 1000, example: 4 }
+        shiftStart: { type: string, format: date-time, description: Must be in the future, example: '2027-01-16T12:00:00Z' }
+        shiftEnd: { type: string, format: date-time, description: Must be after shiftStart, example: '2027-01-16T23:00:00Z' }
+        payPerShift: { type: integer, minimum: 0, maximum: 100000, description: KES, example: 1800 }
+
+    TrainingOption:
+      type: object
+      required: [courseId, title, category, centreName, county, area, durationWeeks, feeKes, nextStart, certificateLevel]
+      properties:
+        courseId: { type: string, example: crs_501 }
+        title: { type: string, example: 'Food hygiene and event service' }
+        category:
+          type: string
+          enum: [accommodation, campus, catering, cleaning, electrical, events, plumbing, security, tutoring]
+          example: catering
+        centreName: { type: string, example: 'Westlands Skills Centre' }
+        county: { type: string, example: Nairobi }
+        area: { type: string, example: Westlands }
+        durationWeeks: { type: integer, minimum: 1, example: 2 }
+        feeKes: { type: integer, minimum: 0, description: 'Per trainee, KES', example: 3500 }
+        nextStart: { type: string, format: date-time, example: '2026-11-23T07:00:00Z' }
+        certificateLevel: { type: string, enum: [short-course, grade-III, grade-II, grade-I], example: short-course }
+
+    NewCrewTraining:
+      type: object
+      additionalProperties: false
+      required: [eventId, courseId, crewSize, preferredStart]
+      properties:
+        eventId: { type: string, description: "One of the logged-in organiser's own events", example: evt_2001 }
+        courseId: { type: string, description: A courseId from GET /api/training-options, example: crs_501 }
+        crewSize: { type: integer, minimum: 1, maximum: 40, example: 6 }
+        preferredStart: { type: string, format: date-time, description: Must be in the future, example: '2026-11-28T08:00:00Z' }
+
+    CrewTrainingUpdate:
+      type: object
+      additionalProperties: false
+      required: [crewSize, preferredStart]
+      properties:
+        crewSize: { type: integer, minimum: 1, maximum: 40, example: 8 }
+        preferredStart: { type: string, format: date-time, description: Must be in the future, example: '2026-11-29T08:00:00Z' }
+
+    CrewTraining:
+      type: object
+      required: [id, eventId, courseId, crewSize, preferredStart, status, createdAt]
+      properties:
+        id: { type: string, example: trn_5001 }
+        eventId: { type: string, example: evt_2001 }
+        courseId: { type: string, example: crs_501 }
+        crewSize: { type: integer, example: 6 }
+        preferredStart: { type: string, format: date-time, example: '2026-11-28T08:00:00Z' }
+        status:
+          type: string
+          enum: [pending, confirmed, declined]
+          description: pending until Ujuzi's training centre decides; confirmed and declined are final.
+          example: pending
+        createdAt: { type: string, format: date-time, example: '2026-11-20T10:00:00Z' }
+
+    NewCertificateCheck:
+      type: object
+      additionalProperties: false
+      required: [certificateNo]
+      properties:
+        certificateNo: { type: string, pattern: '^UJZ-\d{4}-\d{5}$', example: UJZ-2026-00123 }
+
+    CertificateCheckRecord:
+      type: object
+      required: [id, certificateNo, valid, courseTitle, level, issuedOn, holder, checkedAt]
+      properties:
+        id: { type: string, example: chk_7001 }
+        certificateNo: { type: string, example: UJZ-2026-00123 }
+        valid: { type: boolean, description: false when Ujuzi has revoked the certificate, example: true }
+        courseTitle: { type: string, example: 'Food hygiene and event service' }
+        level: { type: string, enum: [short-course, grade-III, grade-II, grade-I], example: short-course }
+        issuedOn: { type: string, format: date, example: '2026-08-14' }
+        holder: { type: string, description: 'First name and initial only, as Ujuzi reports it', example: 'Achieng O.' }
+        checkedAt: { type: string, format: date-time, example: '2026-11-20T10:05:00Z' }
