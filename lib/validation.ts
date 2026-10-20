@@ -289,3 +289,47 @@ export function parseNewRole(body: unknown, now: Date = new Date()): Parsed<NewR
     },
   };
 }
+
+// ---- offers ------------------------------------------------------------------------------------
+
+export interface NewOfferInput {
+  roleId: string;
+  workersOffered: number;
+  note: string;
+}
+
+/**
+ * POST /api/offers. The number of workers is checked here for shape (a whole number, at least 1);
+ * whether the role has that many open places is checked by the handler, which can see the role.
+ */
+export function parseNewOffer(body: unknown): Parsed<NewOfferInput> {
+  const fields = readFields(body, ['roleId', 'workersOffered', 'note']);
+  if (!fields.ok) return fields;
+  const f = fields.value;
+  const roleId = text(f, 'roleId', { max: 40 });
+  if (!roleId.ok) return roleId;
+
+  const workers = f.workersOffered;
+  if (typeof workers !== 'number' || !Number.isInteger(workers) || workers < 1) {
+    return { ok: false, message: 'workersOffered must be a whole number from 1 to the open slots' };
+  }
+
+  // note is optional; sending none is the same as sending "". null and non-text are mistakes.
+  let note = '';
+  if (f.note !== undefined) {
+    const parsed = text(f, 'note', { max: 500, min: 0 });
+    if (!parsed.ok) return parsed;
+    note = parsed.value;
+  }
+  return { ok: true, value: { roleId: roleId.value, workersOffered: workers, note } };
+}
+
+export type OfferDecisionInput = { status: 'accepted' | 'declined' };
+
+/** PATCH /api/offers/{offerId}: the organiser accepts or declines. */
+export function parseOfferDecision(body: unknown): Parsed<OfferDecisionInput> {
+  const fields = readFields(body, ['status']);
+  if (!fields.ok) return fields;
+  const status = oneOf(fields.value, 'status', ['accepted', 'declined'] as const);
+  return status.ok ? { ok: true, value: { status: status.value } } : status;
+}

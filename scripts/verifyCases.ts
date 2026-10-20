@@ -301,5 +301,115 @@ export async function buildCases(env: Env): Promise<Case[]> {
       expectStatus: 403, unchanged: true, check: messageContains('only see the offers on events you created') },
     { operation: 'GET /api/events/{eventId}/offers', label: 'unknown event', url: '/api/events/evt_9999/offers', headers: as('ownerToken'),
       expectStatus: 404, unchanged: true, check: messageContains('evt_9999') },
+
+    // ---- K3: POST /api/offers (the owner's role has 4 places) --------------------------------
+    { operation: 'POST /api/offers', label: 'Kazi offers 3 of the 4 places', url: '/api/offers',
+      body: (ctx: Ctx) => ({ roleId: need(ctx, 'roleId'), workersOffered: 3, note: 'Verification offer' }),
+      expectStatus: 201, expectHeaders: { location: /^\/api\/offers\/ofr_\d+$/ },
+      check: all(field('status', 'pending'), field('workersOffered', 3), (body, ctx) => (isObject(body) && body.eventId === ctx.eventId ? undefined : 'eventId is not the role’s event')),
+      capture: (body, ctx) => {
+        if (isObject(body)) ctx.offerId = String(body.id);
+      },
+      after: async ({ ctx, get }, body) => {
+        const one = await get(`/api/offers/${need(ctx, 'offerId')}`);
+        const mine = await get(`/api/events/${need(ctx, 'eventId')}/offers`, need(ctx, 'ownerToken'));
+        const roles = await get(`/api/events/${need(ctx, 'eventId')}/roles`);
+        const role = asArray(roles.body).find((r) => r.id === ctx.roleId);
+        return [
+          ...(JSON.stringify(one.body) === JSON.stringify(body) ? [] : ['GET /api/offers/{id} does not return what was created']),
+          ...(JSON.stringify(mine.body) === JSON.stringify([body]) ? [] : ['the organiser’s offer list is not exactly the new offer']),
+          ...(role?.filled === 0 ? [] : ['a pending offer already filled places on the role']),
+        ];
+      } },
+    { operation: 'POST /api/offers', label: 'a second pending offer on the same role', url: '/api/offers',
+      body: (ctx: Ctx) => ({ roleId: need(ctx, 'roleId'), workersOffered: 1 }), expectStatus: 409, unchanged: true,
+      check: messageContains('already has a pending offer') },
+    { operation: 'POST /api/offers', label: 'unknown role', url: '/api/offers', body: { roleId: 'rol_9999', workersOffered: 1 },
+      expectStatus: 404, unchanged: true, check: messageContains('Role rol_9999 not found') },
+    { operation: 'POST /api/offers', label: 'a role on an event that is over', url: '/api/offers', body: { roleId: 'rol_3011', workersOffered: 1 },
+      expectStatus: 409, unchanged: true, check: messageContains('only upcoming events accept offers') },
+    { operation: 'POST /api/offers', label: 'a role with no places left', url: '/api/offers',
+      body: (ctx: Ctx) => ({ roleId: need(ctx, 'fullRoleId'), workersOffered: 1 }), expectStatus: 409, unchanged: true,
+      check: messageContains('is full'),
+      before: async ({ ctx, store }) => {
+        const full = await store.roles.create({
+          event_id: need(ctx, 'eventId'), title: 'Verification fixture: full role', category: 'events', headcount: 2, filled: 2,
+          shift_start: new Date(Date.now() + 90 * 86_400_000), shift_end: new Date(Date.now() + 91 * 86_400_000), pay_per_shift: 1000,
+        });
+        ctx.fullRoleId = full.id;
+      } },
+    { operation: 'POST /api/offers', label: 'more workers than open places', url: '/api/offers',
+      body: (ctx: Ctx) => ({ roleId: need(ctx, 'roleId'), workersOffered: 5 }), expectStatus: 400, unchanged: true,
+      check: messageContains('from 1 to the open slots') },
+    { operation: 'POST /api/offers', label: 'zero workers', url: '/api/offers',
+      body: (ctx: Ctx) => ({ roleId: need(ctx, 'roleId'), workersOffered: 0 }), expectStatus: 400, unchanged: true,
+      check: messageContains('from 1 to the open slots') },
+    { operation: 'POST /api/offers', label: 'workers sent as text', url: '/api/offers',
+      body: (ctx: Ctx) => ({ roleId: need(ctx, 'roleId'), workersOffered: '2' }), expectStatus: 400, unchanged: true,
+      check: messageContains('whole number') },
+    { operation: 'POST /api/offers', label: 'tries to set the status', url: '/api/offers',
+      body: (ctx: Ctx) => ({ roleId: need(ctx, 'roleId'), workersOffered: 1, status: 'accepted' }), expectStatus: 400, unchanged: true,
+      check: messageContains('Unknown field "status"') },
+
+    // ---- O3: PATCH /api/offers/{offerId} -----------------------------------------------------
+    { operation: 'PATCH /api/offers/{offerId}', label: 'no login', url: (ctx) => `/api/offers/${need(ctx, 'offerId')}`,
+      body: { status: 'accepted' }, expectStatus: 401, unchanged: true },
+    { operation: 'PATCH /api/offers/{offerId}', label: 'another organiser', url: (ctx) => `/api/offers/${need(ctx, 'offerId')}`,
+      headers: as('strangerToken'), body: { status: 'accepted' }, expectStatus: 403, unchanged: true,
+      check: messageContains('only decide offers on events you created') },
+    { operation: 'PATCH /api/offers/{offerId}', label: 'unknown offer', url: '/api/offers/ofr_9999', headers: as('ownerToken'),
+      body: { status: 'accepted' }, expectStatus: 404, unchanged: true, check: messageContains('ofr_9999') },
+    { operation: 'PATCH /api/offers/{offerId}', label: 'status pending is not a decision', url: (ctx) => `/api/offers/${need(ctx, 'offerId')}`,
+      headers: as('ownerToken'), body: { status: 'pending' }, expectStatus: 400, unchanged: true, check: messageContains('accepted, declined') },
+    { operation: 'PATCH /api/offers/{offerId}', label: 'the organiser accepts: 3 places fill', url: (ctx) => `/api/offers/${need(ctx, 'offerId')}`,
+      headers: as('ownerToken'), body: { status: 'accepted' }, expectStatus: 200, check: field('status', 'accepted'),
+      after: async ({ ctx, get }, body) => {
+        const one = await get(`/api/offers/${need(ctx, 'offerId')}`);
+        const roles = await get(`/api/events/${need(ctx, 'eventId')}/roles`);
+        const role = asArray(roles.body).find((r) => r.id === ctx.roleId);
+        return [
+          ...(JSON.stringify(one.body) === JSON.stringify(body) ? [] : ['Kazi’s GET does not show the accepted offer']),
+          ...(role?.filled === 3 ? [] : [`the role shows ${role?.filled} filled, expected 3`]),
+        ];
+      } },
+    { operation: 'PATCH /api/offers/{offerId}', label: 'deciding again: decisions are final', url: (ctx) => `/api/offers/${need(ctx, 'offerId')}`,
+      headers: as('ownerToken'), body: { status: 'declined' }, expectStatus: 409, unchanged: true, check: messageContains('final') },
+
+    // ---- K5: DELETE /api/offers/{offerId} ----------------------------------------------------
+    { operation: 'POST /api/offers', label: 'a new offer once the first was decided (1 place left)', url: '/api/offers',
+      body: (ctx: Ctx) => ({ roleId: need(ctx, 'roleId'), workersOffered: 1 }), expectStatus: 201,
+      capture: (body, ctx) => {
+        if (isObject(body)) ctx.offer2Id = String(body.id);
+      } },
+    { operation: 'DELETE /api/offers/{offerId}', label: 'Kazi withdraws a pending offer', url: (ctx) => `/api/offers/${need(ctx, 'offer2Id')}`, expectStatus: 204,
+      after: async ({ ctx, get }) => {
+        const gone = await get(`/api/offers/${need(ctx, 'offer2Id')}`);
+        const mine = await get(`/api/events/${need(ctx, 'eventId')}/offers`, need(ctx, 'ownerToken'));
+        return [
+          ...(gone.status === 404 ? [] : [`the withdrawn offer can still be read (status ${gone.status})`]),
+          ...(asArray(mine.body).some((o) => o.id === ctx.offer2Id) ? ['the organiser still sees the withdrawn offer'] : []),
+        ];
+      } },
+    { operation: 'DELETE /api/offers/{offerId}', label: 'the same offer again', url: (ctx) => `/api/offers/${need(ctx, 'offer2Id')}`, expectStatus: 404, unchanged: true },
+    { operation: 'DELETE /api/offers/{offerId}', label: 'an accepted offer cannot be withdrawn', url: (ctx) => `/api/offers/${need(ctx, 'offerId')}`,
+      expectStatus: 409, unchanged: true, check: messageContains('only pending offers can be withdrawn'),
+      after: async ({ ctx, get }) => {
+        const still = await get(`/api/offers/${need(ctx, 'offerId')}`);
+        return isObject(still.body) && still.body.status === 'accepted' ? [] : ['the accepted offer changed'];
+      } },
+    { operation: 'DELETE /api/offers/{offerId}', label: 'unknown offer', url: '/api/offers/ofr_9999', expectStatus: 404, unchanged: true, check: messageContains('ofr_9999') },
+
+    { operation: 'POST /api/offers', label: 'one more offer, to be declined', url: '/api/offers',
+      body: (ctx: Ctx) => ({ roleId: need(ctx, 'roleId'), workersOffered: 1 }), expectStatus: 201,
+      capture: (body, ctx) => {
+        if (isObject(body)) ctx.offer3Id = String(body.id);
+      } },
+    { operation: 'PATCH /api/offers/{offerId}', label: 'the organiser declines: no places fill', url: (ctx) => `/api/offers/${need(ctx, 'offer3Id')}`,
+      headers: as('ownerToken'), body: { status: 'declined' }, expectStatus: 200, check: field('status', 'declined'),
+      after: async ({ ctx, get }) => {
+        const roles = await get(`/api/events/${need(ctx, 'eventId')}/roles`);
+        const role = asArray(roles.body).find((r) => r.id === ctx.roleId);
+        return role?.filled === 3 ? [] : [`declining changed the role: ${role?.filled} filled, expected 3`];
+      } },
   ];
 }

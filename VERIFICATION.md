@@ -6,9 +6,9 @@ The script starts the server with the in-memory store, sends real requests to ev
 
 ## Latest run
 
-Run on 2026-10-20T17:40:49Z against contract version 0.1.0.
+Run on 2026-10-20T17:43:29Z against contract version 0.1.0.
 
-**51 of 51 cases passed.** 10 operation(s) in the contract are not verified yet (listed at the end).
+**73 of 73 cases passed.** 7 operation(s) in the contract are not verified yet (listed at the end).
 
 ### Contract checks
 
@@ -16,7 +16,7 @@ Run on 2026-10-20T17:40:49Z against contract version 0.1.0.
 |---|---|
 | openapi.yaml is valid OpenAPI 3.0 and every $ref resolves | pass |
 | 102 examples in openapi.yaml match their own schemas | pass |
-| 45 reads and rejected writes changed nothing (store compared before and after each) | pass |
+| 61 reads and rejected writes changed nothing (store compared before and after each) | pass |
 
 ### Requests sent
 
@@ -73,6 +73,28 @@ Run on 2026-10-20T17:40:49Z against contract version 0.1.0.
 | 49 | `GET /api/events/{eventId}/offers` | no login | `/api/events/evt_2009/offers` | 401 | 401 | pass |
 | 50 | `GET /api/events/{eventId}/offers` | another organiser’s event | `/api/events/evt_2009/offers` | 403 | 403 | pass |
 | 51 | `GET /api/events/{eventId}/offers` | unknown event | `/api/events/evt_9999/offers` | 404 | 404 | pass |
+| 52 | `POST /api/offers` | Kazi offers 3 of the 4 places | `/api/offers` | 201 | 201 | pass |
+| 53 | `POST /api/offers` | a second pending offer on the same role | `/api/offers` | 409 | 409 | pass |
+| 54 | `POST /api/offers` | unknown role | `/api/offers` | 404 | 404 | pass |
+| 55 | `POST /api/offers` | a role on an event that is over | `/api/offers` | 409 | 409 | pass |
+| 56 | `POST /api/offers` | a role with no places left | `/api/offers` | 409 | 409 | pass |
+| 57 | `POST /api/offers` | more workers than open places | `/api/offers` | 400 | 400 | pass |
+| 58 | `POST /api/offers` | zero workers | `/api/offers` | 400 | 400 | pass |
+| 59 | `POST /api/offers` | workers sent as text | `/api/offers` | 400 | 400 | pass |
+| 60 | `POST /api/offers` | tries to set the status | `/api/offers` | 400 | 400 | pass |
+| 61 | `PATCH /api/offers/{offerId}` | no login | `/api/offers/ofr_4002` | 401 | 401 | pass |
+| 62 | `PATCH /api/offers/{offerId}` | another organiser | `/api/offers/ofr_4002` | 403 | 403 | pass |
+| 63 | `PATCH /api/offers/{offerId}` | unknown offer | `/api/offers/ofr_9999` | 404 | 404 | pass |
+| 64 | `PATCH /api/offers/{offerId}` | status pending is not a decision | `/api/offers/ofr_4002` | 400 | 400 | pass |
+| 65 | `PATCH /api/offers/{offerId}` | the organiser accepts: 3 places fill | `/api/offers/ofr_4002` | 200 | 200 | pass |
+| 66 | `PATCH /api/offers/{offerId}` | deciding again: decisions are final | `/api/offers/ofr_4002` | 409 | 409 | pass |
+| 67 | `POST /api/offers` | a new offer once the first was decided (1 place left) | `/api/offers` | 201 | 201 | pass |
+| 68 | `DELETE /api/offers/{offerId}` | Kazi withdraws a pending offer | `/api/offers/ofr_4003` | 204 | 204 | pass |
+| 69 | `DELETE /api/offers/{offerId}` | the same offer again | `/api/offers/ofr_4003` | 404 | 404 | pass |
+| 70 | `DELETE /api/offers/{offerId}` | an accepted offer cannot be withdrawn | `/api/offers/ofr_4002` | 409 | 409 | pass |
+| 71 | `DELETE /api/offers/{offerId}` | unknown offer | `/api/offers/ofr_9999` | 404 | 404 | pass |
+| 72 | `POST /api/offers` | one more offer, to be declined | `/api/offers` | 201 | 201 | pass |
+| 73 | `PATCH /api/offers/{offerId}` | the organiser declines: no places fill | `/api/offers/ofr_4004` | 200 | 200 | pass |
 
 ### What each request is checked for
 
@@ -86,9 +108,6 @@ Run on 2026-10-20T17:40:49Z against contract version 0.1.0.
 
 These operations are in `openapi.yaml` but have no case yet. They are not implemented in this phase, so nothing is claimed about them.
 
-- `POST /api/offers`
-- `DELETE /api/offers/{offerId}`
-- `PATCH /api/offers/{offerId}`
 - `GET /api/training-options`
 - `GET /api/crew-trainings`
 - `POST /api/crew-trainings`
