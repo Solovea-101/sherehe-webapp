@@ -13,7 +13,11 @@ const url = process.env.TEST_DATABASE_URL;
 const STORE_KEY = Symbol.for('sherehe.store');
 type WithStore = typeof globalThis & { [STORE_KEY]?: Promise<Store> };
 
-if (url && process.env.USE_PG_FOR_API_TESTS === 'true') {
+// Browser-like test files (the website's components) fake `fetch` and never touch a database, and
+// the database library cannot load there, so only Node-environment files get the reset.
+const inBrowserLikeEnvironment = typeof window !== 'undefined';
+
+if (url && process.env.USE_PG_FOR_API_TESTS === 'true' && !inBrowserLikeEnvironment) {
   beforeAll(async () => {
     // Loaded here, not at the top, so test files that run in a browser-like environment (the
     // website's component tests) never load the database library, which needs Node-only globals.

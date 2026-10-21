@@ -22,6 +22,8 @@ export interface Env {
   store: Store;
   /** The local stand-in for Ujuzi that the server is pointed at. */
   ujuzi: UjuziStub;
+  /** A partner key the server accepts (Kazi's, in this story). Partner calls send it unless a case says not to. */
+  partnerKey: string;
   /** A GET against the running server, optionally as a logged-in organiser. */
   get: (path: string, token?: string) => Promise<{ status: number; body: unknown }>;
 }
@@ -50,7 +52,15 @@ export interface Case {
   after?: (env: Env, body: unknown) => Promise<string[]>;
   /** Stored data must be exactly as it was before the request (every read, every rejected write). */
   unchanged?: boolean;
+  /** For a partner endpoint: send no key ('none') or a wrong one ('wrong') instead of Kazi's. */
+  partnerKey?: 'none' | 'wrong';
 }
+
+/** The operations Kazi Connect uses, which need its X-API-Key (or, for the three reads, an organiser login). */
+export const PARTNER_OPERATIONS = new Set([
+  'GET /api/events', 'GET /api/events/{eventId}', 'GET /api/events/{eventId}/roles',
+  'POST /api/offers', 'GET /api/offers/{offerId}', 'DELETE /api/offers/{offerId}',
+]);
 
 // ---- small helpers for writing cases ---------------------------------------------------------
 
@@ -126,6 +136,20 @@ export async function buildCases(env: Env): Promise<Case[]> {
   const eventUrl = (suffix = '') => (ctx: Ctx) => `/api/events/${need(ctx, 'eventId')}${suffix}`;
 
   return [
+    // ---- R4: partner keys (the contract's 401) -----------------------------------------------
+    { operation: 'GET /api/events', label: 'no key', url: '/api/events?status=upcoming', partnerKey: 'none', expectStatus: 401, unchanged: true,
+      expectHeaders: { 'www-authenticate': 'ApiKey' }, check: messageContains('Send your partner key as X-API-Key') },
+    { operation: 'GET /api/events', label: 'a wrong key', url: '/api/events?status=upcoming', partnerKey: 'wrong', expectStatus: 401, unchanged: true,
+      check: messageContains('Send your partner key as X-API-Key') },
+    { operation: 'GET /api/events/{eventId}', label: 'no key', url: '/api/events/evt_2001', partnerKey: 'none', expectStatus: 401, unchanged: true },
+    { operation: 'GET /api/events/{eventId}/roles', label: 'no key', url: '/api/events/evt_2001/roles', partnerKey: 'none', expectStatus: 401, unchanged: true },
+    { operation: 'POST /api/offers', label: 'no key: refused before the body is even read, nothing created', url: '/api/offers', partnerKey: 'none',
+      body: { roleId: 'rol_3010', workersOffered: 1 }, expectStatus: 401, unchanged: true },
+    { operation: 'GET /api/offers/{offerId}', label: 'no key', url: `/api/offers/${fixtureOffer.id}`, partnerKey: 'none', expectStatus: 401, unchanged: true },
+    { operation: 'DELETE /api/offers/{offerId}', label: 'no key: the offer is not withdrawn', url: `/api/offers/${fixtureOffer.id}`, partnerKey: 'none',
+      expectStatus: 401, unchanged: true,
+      after: async ({ get }) => ((await get(`/api/offers/${fixtureOffer.id}`)).status === 200 ? [] : ['the offer was withdrawn without a key']) },
+
     // ---- K1: GET /api/events -----------------------------------------------------------------
     { operation: 'GET /api/events', label: 'upcoming events', url: '/api/events?status=upcoming', expectStatus: 200, unchanged: true,
       check: all(allHave('status', 'upcoming'), sortedBy('startsAt'), includes('evt_2001'), excludes('evt_2007')) },
@@ -233,6 +257,14 @@ export async function buildCases(env: Env): Promise<Case[]> {
       } },
     { operation: 'POST /api/auth/logout', label: 'the same token again', url: '/api/auth/logout', headers: as('loginToken'), expectStatus: 401, unchanged: true },
     { operation: 'POST /api/auth/logout', label: 'no token', url: '/api/auth/logout', expectStatus: 401, unchanged: true },
+
+    // ---- R4: the website’s read access, instead of a key -------------------------------------
+    { operation: 'GET /api/events', label: 'a logged-in organiser, no key', url: '/api/events?status=upcoming', headers: as('ownerToken'), partnerKey: 'none',
+      expectStatus: 200, unchanged: true, check: includes('evt_2001') },
+    { operation: 'GET /api/events/{eventId}/roles', label: 'a logged-in organiser, no key', url: '/api/events/evt_2001/roles', headers: as('ownerToken'), partnerKey: 'none',
+      expectStatus: 200, unchanged: true },
+    { operation: 'GET /api/offers/{offerId}', label: 'a login is not enough here: partner key only', url: `/api/offers/${fixtureOffer.id}`, headers: as('ownerToken'), partnerKey: 'none',
+      expectStatus: 401, unchanged: true },
 
     // ---- O2: POST /api/events ----------------------------------------------------------------
     { operation: 'POST /api/events', label: 'an organiser creates an event', url: '/api/events', headers: as('ownerToken'), body: newEvent,

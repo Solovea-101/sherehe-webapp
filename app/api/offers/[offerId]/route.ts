@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { requirePartner } from '@/lib/auth/partnerKey';
 import { requireUser } from '@/lib/auth/session';
 import { getStore } from '@/lib/db';
 import { fail, guard, json, methodNotAllowed, noContent, notFound, readJson } from '@/lib/http';
@@ -7,10 +8,12 @@ import { parseOfferDecision } from '@/lib/validation';
 
 type Params = { params: Promise<{ offerId: string }> };
 
-// K4: one offer and its status.
+// K4: one offer and its status. Partner key only.
 export async function GET(req: NextRequest, { params }: Params) {
   return guard(async () => {
     const { offerId } = await params;
+    const access = await requirePartner(req);
+    if (!access.ok) return access.response;
     const store = await getStore();
     const row = await store.offers.get(offerId);
     if (!row) return notFound('Offer', offerId);
@@ -19,10 +22,12 @@ export async function GET(req: NextRequest, { params }: Params) {
 }
 
 // K5: Kazi Connect withdraws an offer. Only a pending one can be withdrawn; afterwards it is gone.
-// TODO Week 9: require the partner's X-API-Key here (the contract documents a 401).
+// Partner key only.
 export async function DELETE(req: NextRequest, { params }: Params) {
   return guard(async () => {
     const { offerId } = await params;
+    const access = await requirePartner(req);
+    if (!access.ok) return access.response;
     const store = await getStore();
     const result = await store.offers.withdraw(offerId);
     if (result.kind === 'not_found') return notFound('Offer', offerId);

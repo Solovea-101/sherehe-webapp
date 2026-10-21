@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import type { components } from '@/types/api';
 import { COUNTIES } from '@/lib/validation';
 import { api } from './api';
+import { useAuth } from './AuthProvider';
 import { formatEat } from './time';
 import { Badge, Card, Field, Loading, Notice, Select } from './ui';
 
@@ -39,24 +40,31 @@ export function EventCard({ event }: { event: Event }) {
 
 /** Upcoming events, optionally for one county. The same list Kazi Connect reads through the API. */
 export function EventsBrowser() {
+  const { user, ready } = useAuth();
   const [county, setCounty] = useState('');
   const [events, setEvents] = useState<Event[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
 
+  // Waits until we know whether someone is logged in, and asks again when that changes: once the
+  // partner API is protected by keys, the website reads events with the organiser's login instead.
   useEffect(() => {
+    if (!ready) return;
     let cancelled = false;
     setEvents(null);
     setError(null);
+    setNeedsLogin(false);
     const query = county ? `&county=${encodeURIComponent(county)}` : '';
     void api<Event[]>(`/api/events?status=upcoming${query}`).then((res) => {
       if (cancelled) return;
       if (res.ok) setEvents(res.data);
+      else if (res.status === 401) setNeedsLogin(true);
       else setError(res.message);
     });
     return () => {
       cancelled = true;
     };
-  }, [county]);
+  }, [county, ready, user?.id]);
 
   return (
     <div className="space-y-4">
@@ -72,8 +80,15 @@ export function EventsBrowser() {
           </Select>
         </Field>
       </div>
+      {needsLogin && (
+        <Notice>
+          Log in to see the upcoming events.{' '}
+          <Link href="/login" className="font-semibold underline">Log in</Link> or{' '}
+          <Link href="/register" className="font-semibold underline">create an account</Link>.
+        </Notice>
+      )}
       {error && <Notice kind="error">{error}</Notice>}
-      {!error && events === null && <Loading>Loading events...</Loading>}
+      {!error && !needsLogin && events === null && <Loading>Loading events...</Loading>}
       {events && events.length === 0 && <Notice>No upcoming events{county ? ` in ${county}` : ''} yet.</Notice>}
       {events && events.length > 0 && (
         <ul className="grid gap-4 sm:grid-cols-2">

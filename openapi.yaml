@@ -18,7 +18,8 @@ paths:
   /api/events:
     get:
       summary: Upcoming events, optionally filtered by county (K1)
-      security: [{ partnerKey: [] }]
+      description: Needs Kazi Connect's X-API-Key, or a logged-in organiser's token (the website cannot hold a partner key).
+      security: [{ partnerKey: [] }, { organiserToken: [] }]
       parameters:
         - name: status
           in: query
@@ -64,7 +65,8 @@ paths:
   /api/events/{eventId}:
     get:
       summary: One event (K1)
-      security: [{ partnerKey: [] }]
+      description: Needs Kazi Connect's X-API-Key, or a logged-in organiser's token (the website cannot hold a partner key).
+      security: [{ partnerKey: [] }, { organiserToken: [] }]
       parameters:
         - $ref: '#/components/parameters/EventId'
       responses:
@@ -79,7 +81,8 @@ paths:
   /api/events/{eventId}/roles:
     get:
       summary: Staffing roles for one event (K2)
-      security: [{ partnerKey: [] }]
+      description: Needs Kazi Connect's X-API-Key, or a logged-in organiser's token (the website cannot hold a partner key).
+      security: [{ partnerKey: [] }, { organiserToken: [] }]
       parameters:
         - $ref: '#/components/parameters/EventId'
       responses:

@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { ownedEvent } from '@/lib/auth/ownership';
+import { requirePartner } from '@/lib/auth/partnerKey';
 import { requireUser } from '@/lib/auth/session';
 import { getStore } from '@/lib/db';
 import { fail, guard, json, methodNotAllowed, notFound, readJson } from '@/lib/http';
@@ -7,9 +8,12 @@ import { toRole, type ApiRole } from '@/lib/mappers';
 import { parseNewRole } from '@/lib/validation';
 
 // K2: the staffing roles of one event. An event with no roles answers [], an unknown event 404.
+// Partner key, or a logged-in organiser.
 export async function GET(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   return guard(async () => {
     const { eventId } = await params;
+    const access = await requirePartner(req, { allowOrganiser: true });
+    if (!access.ok) return access.response;
     const store = await getStore();
     if (!(await store.events.get(eventId))) return notFound('Event', eventId);
 

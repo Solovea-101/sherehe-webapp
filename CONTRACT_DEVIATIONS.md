@@ -57,6 +57,22 @@ As before, `openapi.yaml` has not been handed off, so none of this is a post-han
 
 - Any method a route does not support answers `405 { "message": ... }` with an `Allow` header. An unknown path answers `404 { "message": ... }`. An unexpected failure answers `500 { "message": ... }`. All three keep the `{ message }` error shape.
 
+## Week 9: partner keys (R4)
+
+No entry from the team yet. TODO, same rule.
+
+### Notes from the coding agent, for the team to turn into the entry above
+
+`openapi.yaml` has still not been handed off. What changed in Week 9, in the contract and in behaviour:
+
+- **The 401 on endpoints 1-6 now exists.** The notes under Week 5 and Week 6 said it did not. A partner endpoint now answers `401 { "message": "Send your partner key as X-API-Key" }` (the contract's own example text) with a `WWW-Authenticate: ApiKey` header when the key is missing or wrong. The key check is the first thing that happens, so a stranger learns nothing from a 400 or 404.
+- **Endpoints 1, 2 and 3 (the three reads) accept a partner key OR a logged-in organiser's token.** This is a change to `openapi.yaml`: their `security` now lists both `partnerKey` and `organiserToken`, with a description. The reason is the website: its home page and event pages read exactly these endpoints, and a partner key must never reach a browser. Endpoints 4, 5 and 6 (POST, GET and DELETE on offers) accept the partner key only.
+- **Consequence for visitors:** once a deployment has partner keys, a person who is not logged in cannot browse events (the site shows "Log in to see the upcoming events"). Before keys are set the site is public. If the team wants public browsing even with keys on, that needs a separate, deliberate design (for example a public listing without partner-only fields); the agent did not invent one.
+- **Keys are never stored.** Sherehe keeps only each key's SHA-256 (`PARTNER_KEYS`, comma separated). `npm run partner:key` prints a new key once and the hash to store. Several keys can be live at once, and removing a hash revokes that key.
+- **If keys are not configured the endpoints stay open,** with a warning in the log, so a clean clone still runs. Set `REQUIRE_PARTNER_KEY=true` on the deployment to refuse everyone until a key exists. If `PARTNER_KEYS` contains entries that are not valid hashes (for example the raw key pasted by mistake), everything is refused instead, with a log line saying why.
+- **Needs the humans:** issuing Kazi its key, setting `PARTNER_KEYS` and `REQUIRE_PARTNER_KEY=true` in Render, setting `UJUZI_API_KEY` there (once Ujuzi issues one), and telling Kazi's sub-team **before** this is deployed (R8): Kazi must start sending `X-API-Key` on endpoints 1-6.
+- **`npm run ring:check` (R9)** is built. Its report was only ever run against local copies; the real run needs the live URLs and keys. See HELD_ISSUES.md, H2, H3 and H8.
+
 ## Entry format
 
 For each change:

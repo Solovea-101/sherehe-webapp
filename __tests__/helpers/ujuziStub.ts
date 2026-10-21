@@ -55,6 +55,8 @@ export interface UjuziStub {
   slowMs: number;
   /** When set, requests without this X-API-Key get 401. */
   requireKey: string | undefined;
+  /** When true, every course carries a field Ujuzi's contract does not list (contract drift). */
+  extraCourseField: boolean;
   bookings: Map<string, Booking>;
   /** What the training centre's staff do on Ujuzi's website: confirm or decline a pending booking. */
   decide: (bookingId: string, status: 'confirmed' | 'declined') => void;
@@ -82,6 +84,7 @@ export async function startUjuziStub(opts: { requireKey?: string } = {}): Promis
     mode: 'ok',
     slowMs: 1500,
     requireKey: opts.requireKey,
+    extraCourseField: false,
     bookings: new Map(),
     decide: (id, status) => {
       const booking = stub.bookings.get(id);
@@ -95,6 +98,7 @@ export async function startUjuziStub(opts: { requireKey?: string } = {}): Promis
       stub.mode = 'ok';
       stub.slowMs = 1500;
       stub.requireKey = opts.requireKey;
+      stub.extraCourseField = false;
       stub.bookings.clear();
       // The id counter is NOT reset: a real Ujuzi never reuses a booking id, and Sherehe's records
       // from earlier tests in the same file still point at the old ones.
@@ -173,7 +177,8 @@ export async function startUjuziStub(opts: { requireKey?: string } = {}): Promis
       const category = url.searchParams.get('category');
       const county = url.searchParams.get('county');
       if (category && !CATEGORIES.includes(category)) return message(res, 400, 'category is not one of the shared categories');
-      return send(res, 200, COURSES.filter((c) => (!category || c.category === category) && (!county || c.county.toLowerCase() === county.toLowerCase())));
+      const matching = COURSES.filter((c) => (!category || c.category === category) && (!county || c.county.toLowerCase() === county.toLowerCase()));
+      return send(res, 200, stub.extraCourseField ? matching.map((c) => ({ ...c, rating: 5 })) : matching);
     }
 
     // ---- S2: certificates

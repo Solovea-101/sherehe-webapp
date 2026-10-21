@@ -11,7 +11,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Upcoming events, optionally filtered by county (K1) */
+        /**
+         * Upcoming events, optionally filtered by county (K1)
+         * @description Needs Kazi Connect's X-API-Key, or a logged-in organiser's token (the website cannot hold a partner key).
+         */
         get: {
             parameters: {
                 query: {
@@ -82,7 +85,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One event (K1) */
+        /**
+         * One event (K1)
+         * @description Needs Kazi Connect's X-API-Key, or a logged-in organiser's token (the website cannot hold a partner key).
+         */
         get: {
             parameters: {
                 query?: never;
@@ -122,7 +128,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Staffing roles for one event (K2) */
+        /**
+         * Staffing roles for one event (K2)
+         * @description Needs Kazi Connect's X-API-Key, or a logged-in organiser's token (the website cannot hold a partner key).
+         */
         get: {
             parameters: {
                 query?: never;

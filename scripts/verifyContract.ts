@@ -20,9 +20,10 @@ import SwaggerParser from '@apidevtools/swagger-parser';
 import Ajv from 'ajv';
 import { getStore } from '@/lib/db';
 import type { Store } from '@/lib/db/types';
+import { sha256Hex } from '@/lib/auth/hash';
 import { createServer } from '@/server';
 import { startUjuziStub } from '../__tests__/helpers/ujuziStub';
-import { buildCases, isObject, type Case, type Ctx, type Env, type JsonObject } from './verifyCases';
+import { PARTNER_OPERATIONS, buildCases, isObject, type Case, type Ctx, type Env, type JsonObject } from './verifyCases';
 
 // ---- the contract, as loaded and dereferenced by swagger-parser ------------------------------
 
@@ -142,6 +143,10 @@ async function runCase(
     return { case: c, url, status: 'no reply', problems: [err instanceof Error ? err.message : String(err)] };
   }
   if (payload !== undefined) headers['Content-Type'] = 'application/json';
+  // Kazi's key on every partner call, unless the case is about a missing or wrong one.
+  if (PARTNER_OPERATIONS.has(c.operation) && c.partnerKey !== 'none') {
+    headers['X-API-Key'] = c.partnerKey === 'wrong' ? 'not-the-issued-key' : env.partnerKey;
+  }
 
   const before = c.unchanged ? await snapshot(env.store, env.ctx) : undefined;
   let res: Response;
@@ -251,6 +256,10 @@ async function main(): Promise<number> {
     return 1;
   }
   process.env.DATABASE_URL = ''; // always the in-memory store: this script writes fixtures into it
+  // Verify the API as it runs in production: with a partner key issued and enforced. Only the hash is configured.
+  const partnerKey = 'shk_verify-run-key-not-a-real-credential';
+  process.env.PARTNER_KEYS = sha256Hex(partnerKey);
+  delete process.env.REQUIRE_PARTNER_KEY;
 
   const root = process.cwd();
   const contractFile = path.join(root, 'openapi.yaml');
@@ -282,9 +291,11 @@ async function main(): Promise<number> {
     ctx,
     store,
     ujuzi,
+    partnerKey,
+    // The verifier's own read-backs act as the trusted partner, so they see what Kazi would see.
     get: async (p, token) => {
       const res = await fetch(base + p, {
-        headers: token ? { Accept: 'application/json', Authorization: `Bearer ${token}` } : { Accept: 'application/json' },
+        headers: { Accept: 'application/json', 'X-API-Key': partnerKey, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
       const raw = await res.text();
       return { status: res.status, body: raw ? JSON.parse(raw) : undefined };

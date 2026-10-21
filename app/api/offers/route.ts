@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { requirePartner } from '@/lib/auth/partnerKey';
 import { getStore } from '@/lib/db';
 import { StoreConflictError } from '@/lib/db/types';
 import { fail, guard, json, methodNotAllowed, notFound, readJson } from '@/lib/http';
@@ -10,9 +11,11 @@ import { parseNewOffer } from '@/lib/validation';
 // Checks, in order: body valid (400), role exists (404), its event is still upcoming (409), the role
 // has open places (409), the offer is not bigger than the open places (400), the role has no other
 // pending offer (409).
-// TODO Week 9: require the partner's X-API-Key here (the contract documents a 401).
+// Needs Kazi's partner key (401 without it), checked before anything else.
 export async function POST(req: NextRequest) {
   return guard(async () => {
+    const access = await requirePartner(req);
+    if (!access.ok) return access.response;
     const body = await readJson(req);
     if (!body.ok) return body.response;
     const input = parseNewOffer(body.data);

@@ -1,13 +1,14 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { NextResponse } from 'next/server';
 import { getStore } from '@/lib/db';
 import type { Store, UserRow } from '@/lib/db/types';
 import { fail, type ErrorBody } from '@/lib/http';
+import { sha256Hex } from './hash';
 
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // a login lasts a week
 const MAX_TOKEN_LENGTH = 200; // ours are 43 characters; refuse to hash anything much longer
 
-export const sha256Hex = (value: string): string => createHash('sha256').update(value).digest('hex');
+export { sha256Hex };
 
 /** Starts a login. Only the token's SHA-256 is stored, so a database leak does not leak logins. */
 export async function startSession(store: Store, userId: string, now: Date = new Date()) {

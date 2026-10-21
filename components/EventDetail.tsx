@@ -29,7 +29,9 @@ export function EventDetail({ eventId }: { eventId: string }) {
   const load = useCallback(async () => {
     const [eventRes, rolesRes] = await Promise.all([api<Event>(`/api/events/${eventId}`), api<Role[]>(`/api/events/${eventId}/roles`)]);
     if (!eventRes.ok) {
-      setError(eventRes.status === 404 ? 'We could not find that event.' : eventRes.message);
+      setError(
+        eventRes.status === 404 ? 'We could not find that event.' : eventRes.status === 401 ? 'Log in to view this event.' : eventRes.message,
+      );
       setLoaded(true);
       return;
     }
@@ -51,6 +53,11 @@ export function EventDetail({ eventId }: { eventId: string }) {
     return (
       <div className="space-y-4">
         <Notice kind="error">{error ?? 'We could not load that event.'}</Notice>
+        {error === 'Log in to view this event.' && (
+          <p>
+            <Link href={`/login?next=/events/${eventId}`} className="font-semibold text-brand hover:underline">Log in</Link> to continue.
+          </p>
+        )}
         <Link href="/" className="text-brand hover:underline">Back to all events</Link>
       </div>
     );

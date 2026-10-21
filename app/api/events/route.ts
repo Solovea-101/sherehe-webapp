@@ -1,13 +1,17 @@
 import type { NextRequest } from 'next/server';
+import { requirePartner } from '@/lib/auth/partnerKey';
 import { requireUser } from '@/lib/auth/session';
 import { getStore } from '@/lib/db';
 import { fail, guard, json, methodNotAllowed, readJson } from '@/lib/http';
 import { toEvent, type ApiEvent } from '@/lib/mappers';
 import { parseEventsQuery, parseNewEvent } from '@/lib/validation';
 
-// K1: upcoming events, optionally in one county.
+// K1: upcoming events, optionally in one county. Needs Kazi's partner key, or a logged-in organiser
+// (the website cannot hold a partner key).
 export async function GET(req: NextRequest) {
   return guard(async () => {
+    const access = await requirePartner(req, { allowOrganiser: true });
+    if (!access.ok) return access.response;
     const query = parseEventsQuery(req.nextUrl.searchParams);
     if (!query.ok) return fail(400, query.message);
 
