@@ -2,9 +2,12 @@
 // point at a real database or partner. Tests always use the in-memory store and the local stub, so
 // blank those settings (an empty string counts as "already set" and survives Next's own .env load).
 process.env.DATABASE_URL = '';
-process.env.UJUZI_API_URL = ''; // tests that need Ujuzi point this at the local stub
-process.env.UJUZI_API_KEY = '';
 process.env.PARTNER_KEYS = '';
+// `npm run test:partner` aims at the real Ujuzi on purpose, so it keeps the Ujuzi settings it was given.
+if (process.env.PARTNER_TESTS !== 'true') {
+  process.env.UJUZI_API_URL = ''; // tests that need Ujuzi point this at the local stub
+  process.env.UJUZI_API_KEY = '';
+}
 
 // Next.js loads next.config.ts with Node's own module loader, which builds the config in a different
 // JavaScript realm from the one Jest runs Next in, and Next then fails to copy it ("object is not

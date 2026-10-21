@@ -63,6 +63,14 @@ export interface UjuziStub {
   close: () => Promise<void>;
 }
 
+/** Stands in for a request body that was not JSON, so the route can answer 400 as the contract says. */
+const BAD_JSON = Symbol('bad json');
+const NEW_BOOKING_FIELDS = ['courseId', 'crewSize', 'preferredStart', 'eventName'];
+const BOOKING_UPDATE_FIELDS = ['crewSize', 'preferredStart'];
+/** The contract's NewBooking and BookingUpdate forbid fields it does not list (additionalProperties: false). */
+const unknownField = (body: unknown, allowed: string[]): string | undefined =>
+  typeof body === 'object' && body !== null ? Object.keys(body).find((k) => !allowed.includes(k)) : undefined;
+
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
 export async function startUjuziStub(opts: { requireKey?: string } = {}): Promise<UjuziStub> {
@@ -113,15 +121,16 @@ export async function startUjuziStub(opts: { requireKey?: string } = {}): Promis
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf8');
       let body: unknown;
+      let badJson = false;
       try {
         body = raw ? JSON.parse(raw) : undefined;
       } catch {
-        body = undefined;
+        badJson = true;
       }
       const apiKey = req.headers['x-api-key'];
       stub.calls.push({ method: req.method ?? 'GET', path: req.url ?? '/', apiKey: typeof apiKey === 'string' ? apiKey : undefined, body });
 
-      const respond = () => route(req, res, body);
+      const respond = () => route(req, res, badJson ? BAD_JSON : body);
       switch (stub.mode) {
         case 'down':
           return req.socket.destroy();
@@ -176,6 +185,9 @@ export async function startUjuziStub(opts: { requireKey?: string } = {}): Promis
 
     // ---- S3: create a booking
     if (parts[1] === 'bookings' && !parts[2] && method === 'POST') {
+      if (body === BAD_JSON) return message(res, 400, 'The request body is not valid JSON');
+      const extra = unknownField(body, NEW_BOOKING_FIELDS);
+      if (extra) return message(res, 400, `Unknown field "${extra}"`);
       const b = (typeof body === 'object' && body !== null ? body : {}) as { [k: string]: unknown };
       if (!COURSES.some((c) => c.id === b.courseId)) return message(res, 404, `Course ${String(b.courseId)} not found`);
       if (!Number.isInteger(b.crewSize) || (b.crewSize as number) < 1 || (b.crewSize as number) > 40) return message(res, 400, 'crewSize must be a whole number from 1 to 40');
@@ -203,6 +215,9 @@ export async function startUjuziStub(opts: { requireKey?: string } = {}): Promis
         return send(res, 204);
       }
       if (method === 'PUT') {
+        if (body === BAD_JSON) return message(res, 400, 'The request body is not valid JSON');
+        const extra = unknownField(body, BOOKING_UPDATE_FIELDS);
+        if (extra) return message(res, 400, `Unknown field "${extra}"`);
         const b = (typeof body === 'object' && body !== null ? body : {}) as { [k: string]: unknown };
         if (!Number.isInteger(b.crewSize) || (b.crewSize as number) < 1 || (b.crewSize as number) > 40) return message(res, 400, 'crewSize must be a whole number from 1 to 40');
         if (typeof b.preferredStart !== 'string' || !ISO_UTC.test(b.preferredStart) || Date.parse(b.preferredStart) <= Date.now()) {
