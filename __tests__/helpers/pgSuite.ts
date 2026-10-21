@@ -7,9 +7,7 @@
  * every file starts from the same sample data it gets in memory. Without both settings this file
  * does nothing.
  */
-import { Pool } from 'pg';
 import type { Store } from '@/lib/db/types';
-import { resetDatabase } from './pgReset';
 
 const url = process.env.TEST_DATABASE_URL;
 const STORE_KEY = Symbol.for('sherehe.store');
@@ -17,6 +15,10 @@ type WithStore = typeof globalThis & { [STORE_KEY]?: Promise<Store> };
 
 if (url && process.env.USE_PG_FOR_API_TESTS === 'true') {
   beforeAll(async () => {
+    // Loaded here, not at the top, so test files that run in a browser-like environment (the
+    // website's component tests) never load the database library, which needs Node-only globals.
+    const { Pool } = await import('pg');
+    const { resetDatabase } = await import('./pgReset');
     const pool = new Pool({ connectionString: url });
     try {
       await resetDatabase(pool);

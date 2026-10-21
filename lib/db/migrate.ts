@@ -27,10 +27,12 @@ export async function migrate(pool: Pool, dir: string = MIGRATIONS_DIR): Promise
         (r) => r.version,
       ),
     );
-    const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.sql')).sort();
+    // The migrations folder is read from the repo at run time (the custom server runs from the project
+    // folder, not from a traced bundle), so Turbopack's "trace the whole project" warning is noise here.
+    const files = (await fs.readdir(/*turbopackIgnore: true*/ dir)).filter((f) => f.endsWith('.sql')).sort();
     for (const file of files) {
       if (done.has(file)) continue;
-      const sql = await fs.readFile(path.join(dir, file), 'utf8');
+      const sql = await fs.readFile(path.join(/*turbopackIgnore: true*/ dir, file), 'utf8');
       try {
         await client.query('BEGIN');
         await client.query(sql);
