@@ -17,7 +17,8 @@
     "types": "npm run generate --workspace tools/generate-types",
     "test": "next build && jest --runInBand",
     "verify": "next build && NODE_ENV=production tsx scripts/verifyContract.ts",
-    "db:migrate": "tsx lib/db/migrate.ts"
+    "db:migrate": "tsx lib/db/migrate.ts",
+    "db:seed": "tsx lib/db/seed.ts"
   },
   "dependencies": {
     "@next/env": "^16.4.2",

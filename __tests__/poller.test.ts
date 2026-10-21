@@ -136,18 +136,33 @@ describe('startBookingPoller', () => {
     expect(() => stop()).not.toThrow();
   });
 
-  it('polls on its interval until stopped', async () => {
+  it('polls on its interval, picks up a decision made at Ujuzi, and stops when told to', async () => {
     quiet();
-    jest.useFakeTimers();
     const a = await trainingAtUjuzi();
-    stub.decide(a.bookingId, 'confirmed');
-    const stop = startBookingPoller({ intervalMs: 1000 });
+    const stop = startBookingPoller({ intervalMs: 40 }); // a real, short interval: no faked timers around real I/O
 
-    await jest.advanceTimersByTimeAsync(999);
-    expect((await a.store.crewTrainings.get(a.row.id))?.status).toBe('pending');
-    jest.useRealTimers(); // let the real HTTP call to the stub finish
-    await new Promise((resolve) => setTimeout(resolve, 5)); // (timers were faked while we advanced)
+    const waitFor = async (done: () => Promise<boolean>) => {
+      for (let i = 0; i < 100; i += 1) {
+        if (await done()) return true;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      return false;
+    };
+    const status = async () => (await a.store.crewTrainings.get(a.row.id))?.status;
+
+    // while Ujuzi has not decided, rounds run but change nothing
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(await status()).toBe('pending');
+    expect(stub.calls.filter((c) => c.path.endsWith(a.bookingId)).length).toBeGreaterThanOrEqual(2); // it keeps asking
+
+    stub.decide(a.bookingId, 'confirmed');
+    expect(await waitFor(async () => (await status()) === 'confirmed')).toBe(true);
+
     stop();
+    await new Promise((resolve) => setTimeout(resolve, 100)); // let a round in flight finish
+    const asked = stub.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(stub.calls.length).toBe(asked); // nothing more after stop()
   });
 
   it('reads its interval from BOOKING_POLL_MS and does not hold the process open', () => {
