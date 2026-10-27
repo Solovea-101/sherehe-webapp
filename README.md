@@ -372,6 +372,7 @@ npm run verify         # sends real requests to every endpoint and checks each r
 npm run types          # regenerates types/ after openapi.yaml or Ujuzi's contract changes
 npm run test:partner   # our tests of Ujuzi's API, from its contract alone (see partner-tests/README.md)
 npm run ring:check     # one live read from Ujuzi and a check of our own deployment (see below)
+npm run ring:e2e       # the whole story across Sherehe, Kazi Connect and Ujuzi on this computer (see below)
 ```
 
 `npm run verify` needs Node 22.19 or newer (its OpenAPI library does); the API itself does not.
@@ -379,6 +380,25 @@ npm run ring:check     # one live read from Ujuzi and a check of our own deploym
 **With a real PostgreSQL.** Set `DATABASE_URL`; the tables and the sample data are created on first start (`SEED_SAMPLE_DATA=false` skips the sample data). `npm run db:migrate` and `npm run db:seed` do those steps by hand. To run the store tests, or the whole suite, against a throwaway database: `TEST_DATABASE_URL=postgres://... npm test` (add `USE_PG_FOR_API_TESTS=true` for the whole suite).
 
 **The ring check.** `npm run ring:check` reads from Ujuzi with our real key, checks the answer against Ujuzi's contract and `types/ujuzi.d.ts`, calls Sherehe's own partner endpoints on its deployment, and checks that a call without a key is refused. It only reads. When a failure is the kind that means another system is not finished, it names the item in [HELD_ISSUES.md](HELD_ISSUES.md). `-- --save` keeps the report in `evidence/ring/` for real, non-local runs.
+
+**The whole ring on one computer.** Before anything is deployed, the three systems run side by side, each with its own database:
+
+| System | Port | Database |
+|---|---|---|
+| Sherehe | 4001 | `sherehe_ring` |
+| Kazi Connect | 4002 | `kazi_ring` |
+| Ujuzi | 4003 | `ujuzi_ring` |
+
+One local PostgreSQL serves the three databases; each belongs to its own role, and that role cannot connect to the other two. The settings files, the keys and the start-up script live in a folder outside all three repositories and are not in git. Sherehe's file sets `PORT`, `DATABASE_URL`, `UJUZI_API_URL=http://localhost:4003` and `UJUZI_API_KEY`, `PARTNER_KEYS` (the hash of the key Kazi uses) and `REQUIRE_PARTNER_KEY=true`, so the key rules are the real ones. A quick `BOOKING_POLL_MS` makes the booking check show within seconds instead of minutes.
+
+`npm run ring:e2e` then plays the story through the three public APIs, creating its own organiser, event, roles, offers and booking each time (nothing is mocked and it reads no other system's database):
+
+1. An organiser registers on Sherehe and posts an event with three roles.
+2. Kazi lists those roles (it read them from Sherehe with its partner key), and an employer on Kazi makes three offers.
+3. The organiser accepts one (the role fills and Kazi opens a job), declines one (no job) and Kazi withdraws one (it disappears from Sherehe).
+4. The organiser reads courses through Sherehe, checks a valid and a revoked certificate, and books a crew training. A staff member of the training centre confirms it on Ujuzi, and Sherehe's booking check shows `confirmed`.
+
+Each step prints `PASS` or `FAIL`. A step that fails only because another system is not running or not finished is marked `waiting on`, with the item of [HELD_ISSUES.md](HELD_ISSUES.md). The exit code is `0` when everything passed, `2` when nothing failed but something is not ready, and `1` for a real failure. `-- --only=kazi` or `-- --only=ujuzi` runs one half. Kazi remembers the events it read from Sherehe for a few minutes, so a role added a moment ago can be missing from Kazi's openings list while offers on it already work; running the script again later shows that step passing.
 
 ### Settings (environment variables)
 
@@ -392,6 +412,7 @@ npm run ring:check     # one live read from Ujuzi and a check of our own deploym
 | `UJUZI_API_URL`, `UJUZI_API_KEY` | Our upstream, and our key at Ujuzi |
 | `UJUZI_TIMEOUT_MS`, `BOOKING_POLL_MS` | Optional tuning of the Ujuzi timeouts and the booking check (default every five minutes) |
 | `SHEREHE_URL`, `SHEREHE_PARTNER_KEY`, `SHEREHE_CHECK_EMAIL`, `SHEREHE_CHECK_PASSWORD` | Only for `npm run ring:check` |
+| `KAZI_URL`, `UJUZI_URL`, `KAZI_EMPLOYER_EMAIL`, `KAZI_EMPLOYER_PASSWORD`, `UJUZI_STAFF_EMAIL`, `UJUZI_STAFF_PASSWORD` | Only for `npm run ring:e2e`; the defaults are the local ring's ports and demo accounts |
 | `SESSION_SECRET` | Reserved. Logins are random tokens whose hashes are stored, so nothing reads it yet |
 
 See `.env.example`. Real values live in Render's settings, never in git.
