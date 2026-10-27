@@ -218,8 +218,13 @@ suite(`Ujuzi partner tests (${BASE || 'no UJUZI_URL set: skipped'})`, () => {
   const writes = WRITES ? describe : describe.skip;
   writes('S3, S4, S5: bookings (these write into Ujuzi: PARTNER_TESTS_WRITE=true)', () => {
     const made: string[] = [];
+    // Ujuzi's contract (0.1.1 onwards) makes a second pending booking with the same course and event
+    // name a 409, so every booking these tests make gets its own name.
+    const NAME = 'Sherehe partner test (safe to delete)';
+    const run = Date.now().toString(36);
+    let counter = 0;
     const newBooking = (change: Json = {}) => ({
-      courseId: courses[0]?.id ?? 'crs_501', crewSize: 6, preferredStart: inDays(30), eventName: 'Sherehe partner test (safe to delete)', ...change,
+      courseId: courses[0]?.id ?? 'crs_501', crewSize: 6, preferredStart: inDays(30), eventName: `${NAME} ${run}-${++counter}`, ...change,
     });
     const create = async (change: Json = {}) => {
       const res = await call('POST', '/api/bookings', { body: newBooking(change) });
@@ -234,7 +239,8 @@ suite(`Ujuzi partner tests (${BASE || 'no UJUZI_URL set: skipped'})`, () => {
       const res = await create();
       expectDocumented(res, '/api/bookings', 'post', 201);
       const booking = res.body as { id: string; status: string; crewSize: number; courseId: string; eventName: string };
-      expect(booking).toMatchObject({ status: 'pending', crewSize: 6, courseId: newBooking().courseId, eventName: newBooking().eventName });
+      expect(booking).toMatchObject({ status: 'pending', crewSize: 6, courseId: newBooking().courseId });
+      expect(booking.eventName.startsWith(NAME)).toBe(true);
       expect(res.headers.get('location')).toBe(`/api/bookings/${booking.id}`);
     });
 
@@ -252,6 +258,14 @@ suite(`Ujuzi partner tests (${BASE || 'no UJUZI_URL set: skipped'})`, () => {
       const res = await create(change);
       expectDocumented(res, '/api/bookings', 'post', 400);
       expect(made.length).toBe(before);
+    });
+
+    it('S3 answers 409 { message } for a second pending booking of the same course and event name, ignoring case', async () => {
+      const first = await create();
+      expectDocumented(first, '/api/bookings', 'post', 201);
+      const { eventName } = first.body as { eventName: string };
+      const again = await create({ eventName: eventName.toUpperCase() });
+      expectDocumented(again, '/api/bookings', 'post', 409);
     });
 
     it('S3 answers 400 for a body that is not JSON', async () => {

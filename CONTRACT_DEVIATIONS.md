@@ -73,6 +73,21 @@ No entry from the team yet. TODO, same rule.
 - **Needs the humans:** issuing Kazi its key, setting `PARTNER_KEYS` and `REQUIRE_PARTNER_KEY=true` in Render, setting `UJUZI_API_KEY` there (once Ujuzi issues one), and telling Kazi's sub-team **before** this is deployed (R8): Kazi must start sending `X-API-Key` on endpoints 1-6.
 - **`npm run ring:check` (R9)** is built. Its report was only ever run against local copies; the real run needs the live URLs and keys. See HELD_ISSUES.md, H2, H3 and H8.
 
+## Ujuzi's contract adopted (2026-10-27)
+
+This is a change to the contract Sherehe consumes, not to ours. `info.version` of Sherehe's own `openapi.yaml` is unchanged (0.1.0).
+
+- **What changed:** `partner-tests/ujuzi_openapi.yaml` went from Ujuzi's draft 0.1.0 to Ujuzi's 0.2.0, copied from the file on Ujuzi's `main` (6bfa327), which Ujuzi also serves at `/openapi.yaml`. `types/ujuzi.d.ts` was regenerated with `npm run types`.
+- **Approved by:** the team member driving the Sherehe session, on 2026-10-27 ("yes, adopt Ujuzi's 0.2.0"). Ujuzi's agent supplied the changelog below; Sherehe's agent only compared the paths.
+- **Ujuzi's changelog since 0.1.0:** 0.1.1 documents a `413` (body over 20 KB) on POST/PUT/PATCH and writes down rules the API already followed (order of checks; a second pending booking for the same `courseId` and `eventName`, ignoring case, is `409`; `PUT` cannot change `eventName` or `courseId`; the accepted `preferredStart` forms). 0.2.0 adds 16 operations for Ujuzi's own website (accounts, enrolments, Kazi job matches and applications, staff tools) and lets `GET /api/courses`, `/api/courses/{id}` and `/api/certificates/{no}` accept a partner key or a login token. `Course`, `CertificateCheck`, `NewBooking`, `BookingUpdate`, `Booking` and `Error` are unchanged.
+- **What Sherehe changed in response:**
+  - The stand-in for Ujuzi used by the tests now enforces the duplicate-booking `409`.
+  - The partner tests give each booking its own event name and have a new test for that `409`.
+  - A second pending crew training of the same course for one event now answers `409 "Ujuzi already has a pending booking of this course for this event"`. The message used to say Ujuzi "cannot take this booking right now".
+  - Four of our own tests booked the same course twice for one event; they now use different courses or names.
+- **What was checked:** typecheck; 692 tests passed (1 skipped); `npm run verify` 123/123; the partner suite with writes against Ujuzi on `http://localhost:4003` (33 passed, 1 todo); `npm run ring:e2e` 22/22 before this change.
+- **Not done:** nothing here was tried against a deployed Ujuzi. The agent has not classified the partner-test failures seen on the way (see PARTNER_TEST_RESULTS.md): the first run of the write tests against 0.2.0 failed 7 of 34 because our tests reused one event name, which the contract now rules out. That is the team's call to classify.
+
 ## Entry format
 
 For each change:

@@ -215,10 +215,19 @@ describe('GET /api/crew-trainings and /api/crew-trainings/{id} (O4, S4)', () => 
     const other = await organiserWithEvent(app());
     expect((await request(app()).get('/api/crew-trainings').set(me.auth)).body).toEqual([]);
     const a = (await book(me)).body;
-    const b = (await book(me, { crewSize: 3 })).body;
+    const b = (await book(me, { courseId: 'crs_502', crewSize: 3 })).body; // another course: Ujuzi refuses a second pending booking of the same course for one event
     await book(other);
     const list = (await request(app()).get('/api/crew-trainings').set(me.auth)).body;
     expect(list.map((t: { id: string }) => t.id)).toEqual([b.id, a.id]);
+  });
+
+  it('answers 409 when the event already has a pending booking of that course at Ujuzi', async () => {
+    const me = await organiserWithEvent(app());
+    expect((await book(me)).status).toBe(201);
+    const again = await book(me);
+    expect(again.status).toBe(409);
+    expect(again.body).toEqual({ message: 'Ujuzi already has a pending booking of this course for this event' });
+    expect((await request(app()).get('/api/crew-trainings').set(me.auth)).body).toHaveLength(1);
   });
 
   it('answers 401 without a login', async () => {
@@ -384,7 +393,7 @@ describe('DELETE /api/crew-trainings/{id} (O4, S5)', () => {
     expect(local.status).toBe(409);
     expect(local.body.message).toBe(`Crew training ${a.id} is declined; only pending crew trainings can be cancelled`);
 
-    const b = (await book(me)).body;
+    const b = (await book(me, { courseId: 'crs_502' })).body;
     ujuzi().decide([...ujuzi().bookings.keys()][1], 'confirmed');
     const remote = await del(me, b.id);
     expect(remote.status).toBe(409);
