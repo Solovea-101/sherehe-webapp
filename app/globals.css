@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+/* Brand colours. Placeholder palette: the team can swap these values without touching components. */
+@theme {
+  --color-brand: #c2410c;
+  --color-brand-dark: #9a3412;
+  --color-accent: #eab308;
+  --color-ink: #1c1917;
+  --color-paper: #fafaf9;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+}

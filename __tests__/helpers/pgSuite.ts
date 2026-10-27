@@ -1,0 +1,43 @@
+/**
+ * Opt-in: run the whole API test suite against a real PostgreSQL instead of the in-memory store.
+ *
+ *   TEST_DATABASE_URL=postgres://user@127.0.0.1:5432/sherehe_test USE_PG_FOR_API_TESTS=true npm test
+ *
+ * The database is wiped and re-seeded before each test file (the tables are created if needed), so
+ * every file starts from the same sample data it gets in memory. Without both settings this file
+ * does nothing.
+ */
+import type { Store } from '@/lib/db/types';
+
+const url = process.env.TEST_DATABASE_URL;
+const STORE_KEY = Symbol.for('sherehe.store');
+type WithStore = typeof globalThis & { [STORE_KEY]?: Promise<Store> };
+
+// Browser-like test files (the website's components) fake `fetch` and never touch a database, and
+// the database library cannot load there, so only Node-environment files get the reset.
+const inBrowserLikeEnvironment = typeof window !== 'undefined';
+
+if (url && process.env.USE_PG_FOR_API_TESTS === 'true' && !inBrowserLikeEnvironment) {
+  beforeAll(async () => {
+    // Loaded here, not at the top, so test files that run in a browser-like environment (the
+    // website's component tests) never load the database library, which needs Node-only globals.
+    const { Pool } = await import('pg');
+    const { resetDatabase } = await import('./pgReset');
+    const pool = new Pool({ connectionString: url });
+    try {
+      await resetDatabase(pool);
+    } finally {
+      await pool.end();
+    }
+    process.env.DATABASE_URL = url; // the app now opens PostgreSQL, through the real getStore()
+    delete (globalThis as WithStore)[STORE_KEY];
+  });
+
+  afterAll(async () => {
+    const g = globalThis as WithStore;
+    const opened = g[STORE_KEY];
+    delete g[STORE_KEY];
+    process.env.DATABASE_URL = '';
+    if (opened) await (await opened.catch(() => undefined))?.close();
+  });
+}
