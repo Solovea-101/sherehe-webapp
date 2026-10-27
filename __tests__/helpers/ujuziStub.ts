@@ -200,6 +200,14 @@ export async function startUjuziStub(opts: { requireKey?: string } = {}): Promis
         return message(res, 400, 'preferredStart must be a future date-time, for example 2026-11-28T08:00:00Z');
       }
       if (typeof b.eventName !== 'string' || b.eventName === '' || b.eventName.length > 120) return message(res, 400, 'eventName must be 1 to 120 characters');
+      // Ujuzi's contract (0.1.1 onwards): a second pending booking of the same course and event name,
+      // ignoring case and surrounding spaces, is a 409.
+      const sameName = (a: string, c: string) => a.trim().toLowerCase() === c.trim().toLowerCase();
+      for (const other of stub.bookings.values()) {
+        if (other.status === 'pending' && other.courseId === b.courseId && sameName(other.eventName, b.eventName)) {
+          return message(res, 409, `A pending booking named "${other.eventName}" already exists for course ${other.courseId}`);
+        }
+      }
       const booking: Booking = {
         id: `bkg_${nextBooking++}`, courseId: b.courseId as string, eventName: b.eventName, crewSize: b.crewSize as number,
         preferredStart: b.preferredStart, status: 'pending', createdAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),

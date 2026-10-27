@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       if (err instanceof PartnerRejectedError) {
         if (err.status === 404) return notFound('Course', input.value.courseId);
-        if (err.status === 409) return fail(409, 'Ujuzi cannot take this booking right now');
+        if (err.status === 409) return fail(409, 'Ujuzi already has a pending booking of this course for this event');
         return fail(400, 'Ujuzi did not accept the booking; check courseId, crewSize and preferredStart');
       }
       throw err; // Ujuzi unavailable: guard() answers 502

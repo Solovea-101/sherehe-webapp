@@ -35,11 +35,44 @@ export interface paths {
                     };
                 };
                 400: components["responses"]["BadRequest"];
-                401: components["responses"]["Unauthorized"];
+                401: components["responses"]["UnauthorizedEither"];
             };
         };
         put?: never;
-        post?: never;
+        /**
+         * Staff create a course at their own centre (Endpoint 20, G4)
+         * @description The course belongs to the logged in staff member's centre; the centre cannot be chosen.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["NewCourse"];
+                };
+            };
+            responses: {
+                /** @description The new course */
+                201: {
+                    headers: {
+                        /** @description Path of the new course */
+                        Location?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Course"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["LoginRequired"];
+                403: components["responses"]["Forbidden"];
+                413: components["responses"]["PayloadTooLarge"];
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -74,12 +107,145 @@ export interface paths {
                         "application/json": components["schemas"]["Course"];
                     };
                 };
-                401: components["responses"]["Unauthorized"];
+                401: components["responses"]["UnauthorizedEither"];
                 404: components["responses"]["NotFound"];
+            };
+        };
+        /**
+         * Staff replace a course's details (Endpoint 21, G4)
+         * @description Sets every detail of the course to what is sent. Only staff at the course's own centre can do this.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    courseId: components["parameters"]["CourseId"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["NewCourse"];
+                };
+            };
+            responses: {
+                /** @description The updated course */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Course"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["LoginRequired"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                413: components["responses"]["PayloadTooLarge"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{courseId}/job-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live Kazi Connect jobs that match a course (Endpoint 14, G3)
+         * @description The active Kazi Connect jobs in the course's category, in the county asked for (by default the course's own county). They are read through Kazi Connect, so an answer can be up to 5 minutes old. When Kazi cannot be reached this answers 502 and nothing else in the API is affected.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description One of Kenya's 47 counties; matching ignores case. Defaults to the course's county. */
+                    county?: string;
+                };
+                header?: never;
+                path: {
+                    courseId: components["parameters"]["CourseId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The matching jobs; an empty array when there are none */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["JobMatch"][];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["LoginRequired"];
+                404: components["responses"]["NotFound"];
+                502: components["responses"]["BadGateway"];
             };
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/certificates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Staff issue a certificate (Endpoint 22, G4)
+         * @description Issues the certificate for an enrolment in one of the staff member's own centre's courses. The course title and level are copied onto the certificate at this moment. The number is UJZ-YEAR-NNNNN.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["NewCertificate"];
+                };
+            };
+            responses: {
+                /** @description The certificate, as a certificate check would show it */
+                201: {
+                    headers: {
+                        /** @description Path of the new certificate */
+                        Location?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CertificateCheck"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["LoginRequired"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                413: components["responses"]["PayloadTooLarge"];
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -115,7 +281,7 @@ export interface paths {
                     };
                 };
                 400: components["responses"]["BadRequest"];
-                401: components["responses"]["Unauthorized"];
+                401: components["responses"]["UnauthorizedEither"];
                 404: components["responses"]["NotFound"];
             };
         };
@@ -134,9 +300,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Staff list the bookings for their centre (Endpoint 23, G5)
+         * @description Every booking, in any status, for the courses of the logged in staff member's centre.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The centre's bookings; an empty array when there are none */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Booking"][];
+                    };
+                };
+                401: components["responses"]["LoginRequired"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
         put?: never;
-        /** Book group training for an event crew (S3) */
+        /**
+         * Book group training for an event crew (S3)
+         * @description Checks run in this order: the body (400), then that the course exists (404), then the duplicate rule (409). A body that fails validation is always 400, even for a course that does not exist. A second pending booking for the same courseId and eventName, ignoring upper and lower case and surrounding spaces, is a 409; once the first booking is confirmed, declined or cancelled the event can be booked again. preferredStart is read as an RFC 3339 date-time and answered as UTC.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -165,6 +359,7 @@ export interface paths {
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                413: components["responses"]["PayloadTooLarge"];
             };
         };
         delete?: never;
@@ -207,7 +402,7 @@ export interface paths {
         };
         /**
          * Replace crew size and start date of a pending booking (S5)
-         * @description Sets an absolute state; sending the same body twice gives the same result.
+         * @description Sets an absolute state; sending the same body twice gives the same result. Only crewSize and preferredStart can change: the event and the course cannot, so sending eventName or courseId is a 400. A body that fails validation is a 400 even for a booking that does not exist.
          */
         put: {
             parameters: {
@@ -237,6 +432,7 @@ export interface paths {
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                413: components["responses"]["PayloadTooLarge"];
             };
         };
         post?: never;
@@ -266,7 +462,10 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Staff confirm or decline a booking (website) */
+        /**
+         * Staff confirm or decline a booking (Endpoint 24, G5)
+         * @description Only a pending booking can be decided, and only by staff at the centre that runs the booking's course. confirmed and declined are final.
+         */
         patch: {
             parameters: {
                 query?: never;
@@ -292,12 +491,459 @@ export interface paths {
                     };
                 };
                 400: components["responses"]["BadRequest"];
-                401: components["responses"]["Unauthorized"];
+                401: components["responses"]["LoginRequired"];
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                413: components["responses"]["PayloadTooLarge"];
             };
         };
+        trace?: never;
+    };
+    "/api/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an account and log it in (Endpoint 8, G1)
+         * @description Anyone can create a graduate account. A staff account also needs centreId and the inviteCode that this deployment was configured with; when no invite code is configured, staff accounts cannot be created this way and the answer is 403. The password is stored only as a hash.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["NewUser"];
+                };
+            };
+            responses: {
+                /** @description The new account and its login token */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                409: components["responses"]["Conflict"];
+                413: components["responses"]["PayloadTooLarge"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log in and get a token (Endpoint 9, G1) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["Credentials"];
+                };
+            };
+            responses: {
+                /** @description The account and a new login token (valid for 7 days) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthResponse"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["InvalidLogin"];
+                413: components["responses"]["PayloadTooLarge"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log out, so the token stops working (Endpoint 10, G1) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Logged out; the token no longer works */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["LoginRequired"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The logged in user (Endpoint 11, G1) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The user */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["User"];
+                    };
+                };
+                401: components["responses"]["LoginRequired"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/enrolments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enrol the logged in graduate in a course (Endpoint 12, G2) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["NewEnrolment"];
+                };
+            };
+            responses: {
+                /** @description The enrolment */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Enrolment"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["LoginRequired"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                413: components["responses"]["PayloadTooLarge"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/enrolments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The graduate's enrolments and certificates (Endpoint 13, G2) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The graduate's enrolments, oldest first; an empty array when there are none */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Enrolment"][];
+                    };
+                };
+                401: components["responses"]["LoginRequired"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The graduate's Kazi applications with their latest status (Endpoint 16, G3)
+         * @description Every application this graduate made through Ujuzi, oldest first, including withdrawn ones (status cancelled). The status is the latest one Ujuzi has heard from Kazi Connect.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The applications; an empty array when there are none */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Application"][];
+                    };
+                };
+                401: components["responses"]["LoginRequired"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Apply for a Kazi job on the graduate's behalf (Endpoint 15, G3)
+         * @description Ujuzi creates the application at Kazi Connect for the logged in graduate and keeps Kazi's application id. The job must exist and be active, and preferredDate must be in the future. Each call makes a new application, so this is not idempotent.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["NewApplication"];
+                };
+            };
+            responses: {
+                /** @description The application, pending */
+                201: {
+                    headers: {
+                        /** @description Path of the new application */
+                        Location?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Application"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["LoginRequired"];
+                403: components["responses"]["Forbidden"];
+                409: components["responses"]["Conflict"];
+                413: components["responses"]["PayloadTooLarge"];
+                502: components["responses"]["BadGateway"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/applications/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * WebSocket that pushes each change to the graduate's applications (Endpoint 19, G3)
+         * @description A plain GET that upgrades to a WebSocket, so connect with a WebSocket client (ws:// or wss://), not a normal HTTP request. Swagger UI cannot open WebSockets, so Try it out answers 426.
+         *
+         *     Browsers cannot set headers on a WebSocket, so the connection is authenticated by its first message, sent within 5 seconds of connecting: {"type":"auth","token":"YOUR_TOKEN"}. The server answers {"type":"ready"} and from then on sends one JSON FeedEvent for every status change of one of the graduate's applications. A bad or missing token closes the socket with code 4401.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Switching Protocols. After the auth message, each message the server sends is one FeedEvent, shown below. */
+                101: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FeedEvent"];
+                    };
+                };
+                426: components["responses"]["UpgradeRequired"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/applications/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reschedule a pending application (Endpoint 17, G3)
+         * @description id is Kazi's application id. Sets an absolute state: leaving note out clears it, and sending the same body twice leaves the same application. Only a pending application can be changed.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Kazi Connect's application id */
+                    id: components["parameters"]["ApplicationId"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ApplicationUpdate"];
+                };
+            };
+            responses: {
+                /** @description The updated application */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Application"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["LoginRequired"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                413: components["responses"]["PayloadTooLarge"];
+                502: components["responses"]["BadGateway"];
+            };
+        };
+        post?: never;
+        /**
+         * Withdraw a pending application (Endpoint 18, G3)
+         * @description id is Kazi's application id. The application is withdrawn at Kazi Connect and stays in the graduate's list with status cancelled. Only a pending application can be withdrawn.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Kazi Connect's application id */
+                    id: components["parameters"]["ApplicationId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Withdrawn */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["LoginRequired"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                502: components["responses"]["BadGateway"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -342,6 +988,33 @@ export interface components {
              */
             certificateLevel: "short-course" | "grade-III" | "grade-II" | "grade-I";
         };
+        NewCourse: {
+            /** @example Food hygiene and event service */
+            title: string;
+            /**
+             * @example catering
+             * @enum {string}
+             */
+            category: "accommodation" | "campus" | "catering" | "cleaning" | "electrical" | "events" | "plumbing" | "security" | "tutoring";
+            /** @example 2 */
+            durationWeeks: number;
+            /**
+             * @description Per trainee
+             * @example 3500
+             */
+            feeKes: number;
+            /**
+             * Format: date-time
+             * @description When the next intake starts; must be in the future, in the same formats as a booking's preferredStart.
+             * @example 2026-11-23T07:00:00Z
+             */
+            nextStart: string;
+            /**
+             * @example short-course
+             * @enum {string}
+             */
+            certificateLevel: "short-course" | "grade-III" | "grade-II" | "grade-I";
+        };
         CertificateCheck: {
             /** @example UJZ-2026-00123 */
             certificateNo: string;
@@ -368,6 +1041,10 @@ export interface components {
              */
             holder: string;
         };
+        NewCertificate: {
+            /** @example enr_0001 */
+            enrolmentId: string;
+        };
         NewBooking: {
             /** @example crs_501 */
             courseId: string;
@@ -375,10 +1052,14 @@ export interface components {
             crewSize: number;
             /**
              * Format: date-time
+             * @description Must be in the future. An RFC 3339 date-time with a Z or an offset (2026-11-28T08:00:00Z or 2026-11-28T11:00:00+03:00); a date with no time, a time with no zone, or a day that does not exist (30 February) is a 400. Answered as UTC with a Z and no milliseconds.
              * @example 2026-11-28T08:00:00Z
              */
             preferredStart: string;
-            /** @example Wanjiku and Otieno wedding */
+            /**
+             * @description Surrounding spaces are removed before the length is checked and the name is stored.
+             * @example Wanjiku and Otieno wedding
+             */
             eventName: string;
         };
         BookingUpdate: {
@@ -386,6 +1067,7 @@ export interface components {
             crewSize: number;
             /**
              * Format: date-time
+             * @description Must be in the future, in the same formats as when the booking is made.
              * @example 2026-11-29T08:00:00Z
              */
             preferredStart: string;
@@ -423,6 +1105,201 @@ export interface components {
              */
             status: "confirmed" | "declined";
         };
+        User: {
+            /** @example grd_0101 */
+            id: string;
+            /**
+             * @example graduate
+             * @enum {string}
+             */
+            role: "graduate" | "staff";
+            /**
+             * Format: email
+             * @example achieng.otieno@example.com
+             */
+            email: string;
+            /** @example Achieng */
+            firstName: string;
+            /** @example Otieno */
+            lastName: string;
+            /**
+             * @description The centre a staff member works at; null for a graduate.
+             * @example null
+             */
+            centreId: string | null;
+        };
+        NewUser: {
+            /**
+             * @example graduate
+             * @enum {string}
+             */
+            role: "graduate" | "staff";
+            /**
+             * Format: email
+             * @description Matched ignoring upper and lower case; one account per email.
+             * @example achieng.otieno@example.com
+             */
+            email: string;
+            /** @example a long passphrase */
+            password: string;
+            /** @example Achieng */
+            firstName: string;
+            /** @example Otieno */
+            lastName: string;
+            /**
+             * @description Staff only. The centre the account belongs to.
+             * @example cen_11
+             */
+            centreId?: string;
+            /**
+             * @description Staff only. The invite code this deployment was configured with.
+             * @example ask-your-centre-lead
+             */
+            inviteCode?: string;
+        };
+        Credentials: {
+            /**
+             * Format: email
+             * @example achieng.otieno@example.com
+             */
+            email: string;
+            /** @example a long passphrase */
+            password: string;
+        };
+        AuthResponse: {
+            /**
+             * @description Send as "Authorization: Bearer TOKEN". Shown once; only its hash is stored.
+             * @example 3f9a1c0e5b7d4a28a6c1e0f94b2d7c58e1a30b6f9d4c27a85e0b1c3d6f2a9e47
+             */
+            token: string;
+            /**
+             * Format: date-time
+             * @example 2026-10-28T10:00:00Z
+             */
+            expiresAt: string;
+            user: components["schemas"]["User"];
+        };
+        NewEnrolment: {
+            /** @example crs_501 */
+            courseId: string;
+        };
+        Enrolment: {
+            /** @example enr_0001 */
+            id: string;
+            /** @example crs_501 */
+            courseId: string;
+            /** @example Food hygiene and event service */
+            courseTitle: string;
+            /**
+             * Format: date-time
+             * @example 2026-08-01T09:00:00Z
+             */
+            enrolledAt: string;
+            /**
+             * @description The certificate issued for this enrolment; null until staff issue one.
+             * @example UJZ-2026-00123
+             */
+            certificateNo: string | null;
+        };
+        JobMatch: {
+            /**
+             * @description Kazi Connect's job id
+             * @example job_12345
+             */
+            jobId: string;
+            /** @example Event Catering Assistant */
+            title: string;
+            /**
+             * @example catering
+             * @enum {string}
+             */
+            category: "accommodation" | "campus" | "catering" | "cleaning" | "electrical" | "events" | "plumbing" | "security" | "tutoring";
+            /** @example Nairobi */
+            county: string;
+            /** @example Westlands */
+            area: string;
+            /**
+             * @description How long the work takes, in plain words
+             * @example Part time, 3 months
+             */
+            duration: string;
+            /** @example true */
+            urgent: boolean;
+            payRange: {
+                /** @example 15000 */
+                minKes: number;
+                /** @example 22000 */
+                maxKes: number;
+            };
+        };
+        NewApplication: {
+            /** @example job_12345 */
+            jobId: string;
+            /**
+             * Format: date-time
+             * @description When the graduate can start; must be in the future, in the same formats as a booking's preferredStart.
+             * @example 2027-01-15T09:00:00Z
+             */
+            preferredDate: string;
+            /** @example Available after 2pm on weekdays */
+            note?: string;
+        };
+        ApplicationUpdate: {
+            /**
+             * Format: date-time
+             * @example 2027-01-22T14:00:00Z
+             */
+            preferredDate: string;
+            /**
+             * @description Replaces the note. Leave it out to clear the note.
+             * @example Rescheduled to the following week
+             */
+            note?: string;
+        };
+        Application: {
+            /**
+             * @description Kazi Connect's application id
+             * @example app_1005
+             */
+            applicationId: string;
+            /** @example job_12345 */
+            jobId: string;
+            /**
+             * Format: date-time
+             * @example 2027-01-15T09:00:00Z
+             */
+            preferredDate: string;
+            /**
+             * @description Empty string when the graduate left no note.
+             * @example Available after 2pm on weekdays
+             */
+            note: string;
+            /**
+             * @description pending is waiting for a decision, accepted means the job is the graduate's, filled means the job went to someone else, and cancelled means the graduate withdrew the application.
+             * @example pending
+             * @enum {string}
+             */
+            status: "pending" | "accepted" | "filled" | "cancelled";
+            /**
+             * Format: date-time
+             * @example 2026-11-20T10:00:00Z
+             */
+            createdAt: string;
+        };
+        FeedEvent: {
+            /** @example app_1005 */
+            applicationId: string;
+            /**
+             * @example accepted
+             * @enum {string}
+             */
+            status: "pending" | "accepted" | "filled" | "cancelled";
+            /**
+             * Format: date-time
+             * @example 2026-11-21T08:30:00Z
+             */
+            updatedAt: string;
+        };
         Error: {
             /** @example Course crs_999 not found */
             message: string;
@@ -443,7 +1320,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Missing or invalid key or token */
+        /** @description Missing or invalid partner key */
         Unauthorized: {
             headers: {
                 [name: string]: unknown;
@@ -457,7 +1334,49 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Logged in, but not staff at this course's centre */
+        /** @description Neither a valid partner key nor a valid login token was sent */
+        UnauthorizedEither: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "message": "Send your partner key as X-API-Key, or log in and send Authorization: Bearer YOUR_TOKEN"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Missing, invalid or expired login token */
+        LoginRequired: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "message": "Log in and send Authorization: Bearer YOUR_TOKEN"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The email or the password is wrong */
+        InvalidLogin: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "message": "Email or password is wrong"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Not allowed for this account (wrong role, another centre's record, or staff sign-up closed) */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -485,6 +1404,20 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description The request body is larger than 20 KB; nothing was changed */
+        PayloadTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "message": "Request body must be 20 KB or less"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Not allowed in the resource's current state */
         Conflict: {
             headers: {
@@ -499,10 +1432,40 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Kazi Connect could not be reached, or answered something unusable; nothing was changed */
+        BadGateway: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "message": "Kazi Connect could not be reached. Try again in a minute."
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Upgrade Required. The request was plain HTTP, not a WebSocket upgrade. */
+        UpgradeRequired: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "message": "Connect to this endpoint with a WebSocket client"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
         CourseId: string;
         BookingId: string;
+        /** @description Kazi Connect's application id */
+        ApplicationId: string;
     };
     requestBodies: never;
     headers: never;

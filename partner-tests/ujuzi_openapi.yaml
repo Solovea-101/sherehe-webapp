@@ -1,12 +1,17 @@
-# FROZEN COPY of Ujuzi's contract that partner-tests/ was written from.
-# DRAFT 0.1.0 - replace with the file Ujuzi actually hands off in Week 4, then run npm run types.
+# Ujuzi API contract 0.2.0: the partner endpoints 1-7 and 24 (Sherehe, needs S1-S5) and the website endpoints 8-23.
 openapi: 3.0.3
 info:
   title: Ujuzi API
-  version: 0.1.0
+  version: 0.2.0
   description: >
     Short courses, certificate checks and group training bookings for Sherehe (needs S1-S5), plus the
-    staff decision on a booking. Partner calls send an X-API-Key; staff calls send a login token.
+    Ujuzi website: accounts, enrolments, live Kazi Connect job matches and applications, and the staff
+    tools for courses, certificates and booking decisions.
+
+
+    Partner calls send an X-API-Key. Website calls send "Authorization: Bearer YOUR_TOKEN", with the
+    token from the register or login call; the course and certificate reads accept either, because a
+    browser cannot hold a partner key. Every error is a JSON body with one field, message.
 servers:
   - url: http://localhost:3000
     description: Local development server
@@ -15,7 +20,7 @@ paths:
   /api/courses:
     get:
       summary: Courses, optionally filtered by category and county (S1)
-      security: [{ partnerKey: [] }]
+      security: [{ partnerKey: [] }, { userToken: [] }]
       parameters:
         - name: category
           in: query
@@ -38,12 +43,35 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/Course' }
         '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
+        '401': { $ref: '#/components/responses/UnauthorizedEither' }
+    post:
+      summary: Staff create a course at their own centre (Endpoint 20, G4)
+      description: The course belongs to the logged in staff member's centre; the centre cannot be chosen.
+      security: [{ staffToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewCourse' }
+      responses:
+        '201':
+          description: The new course
+          headers:
+            Location:
+              description: Path of the new course
+              schema: { type: string, example: /api/courses/crs_510 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Course' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
 
   /api/courses/{courseId}:
     get:
       summary: One course (S1)
-      security: [{ partnerKey: [] }]
+      security: [{ partnerKey: [] }, { userToken: [] }]
       parameters:
         - $ref: '#/components/parameters/CourseId'
       responses:
@@ -52,13 +80,93 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Course' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
+        '401': { $ref: '#/components/responses/UnauthorizedEither' }
         '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      summary: Staff replace a course's details (Endpoint 21, G4)
+      description: Sets every detail of the course to what is sent. Only staff at the course's own centre can do this.
+      security: [{ staffToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CourseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewCourse' }
+      responses:
+        '200':
+          description: The updated course
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Course' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+
+  /api/courses/{courseId}/job-matches:
+    get:
+      summary: Live Kazi Connect jobs that match a course (Endpoint 14, G3)
+      description: >
+        The active Kazi Connect jobs in the course's category, in the county asked for (by default the
+        course's own county). They are read through Kazi Connect, so an answer can be up to 5 minutes old.
+        When Kazi cannot be reached this answers 502 and nothing else in the API is affected.
+      security: [{ userToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CourseId'
+        - name: county
+          in: query
+          required: false
+          description: One of Kenya's 47 counties; matching ignores case. Defaults to the course's county.
+          schema: { type: string, example: Nairobi }
+      responses:
+        '200':
+          description: The matching jobs; an empty array when there are none
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/JobMatch' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+
+  /api/certificates:
+    post:
+      summary: Staff issue a certificate (Endpoint 22, G4)
+      description: >
+        Issues the certificate for an enrolment in one of the staff member's own centre's courses. The
+        course title and level are copied onto the certificate at this moment. The number is
+        UJZ-YEAR-NNNNN.
+      security: [{ staffToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewCertificate' }
+      responses:
+        '201':
+          description: The certificate, as a certificate check would show it
+          headers:
+            Location:
+              description: Path of the new certificate
+              schema: { type: string, example: /api/certificates/UJZ-2026-00125 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CertificateCheck' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
 
   /api/certificates/{certificateNo}:
     get:
       summary: Check that a certificate number is real (S2)
-      security: [{ partnerKey: [] }]
+      security: [{ partnerKey: [] }, { userToken: [] }]
       parameters:
         - name: certificateNo
           in: path
@@ -71,12 +179,33 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CertificateCheck' }
         '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
+        '401': { $ref: '#/components/responses/UnauthorizedEither' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /api/bookings:
+    get:
+      summary: Staff list the bookings for their centre (Endpoint 23, G5)
+      description: Every booking, in any status, for the courses of the logged in staff member's centre.
+      security: [{ staffToken: [] }]
+      responses:
+        '200':
+          description: The centre's bookings; an empty array when there are none
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Booking' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       summary: Book group training for an event crew (S3)
+      description: >
+        Checks run in this order: the body (400), then that the course exists (404), then the
+        duplicate rule (409). A body that fails validation is always 400, even for a course that does
+        not exist. A second pending booking for the same courseId and eventName, ignoring upper and
+        lower case and surrounding spaces, is a 409; once the first booking is confirmed, declined or
+        cancelled the event can be booked again. preferredStart is read as an RFC 3339 date-time and
+        answered as UTC.
       security: [{ partnerKey: [] }]
       requestBody:
         required: true
@@ -97,6 +226,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
 
   /api/bookings/{bookingId}:
     get:
@@ -114,7 +244,10 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
     put:
       summary: Replace crew size and start date of a pending booking (S5)
-      description: Sets an absolute state; sending the same body twice gives the same result.
+      description: >
+        Sets an absolute state; sending the same body twice gives the same result. Only crewSize and
+        preferredStart can change: the event and the course cannot, so sending eventName or courseId
+        is a 400. A body that fails validation is a 400 even for a booking that does not exist.
       security: [{ partnerKey: [] }]
       parameters:
         - $ref: '#/components/parameters/BookingId'
@@ -133,6 +266,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
     delete:
       summary: Cancel a pending booking (S5)
       security: [{ partnerKey: [] }]
@@ -144,7 +278,10 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
     patch:
-      summary: Staff confirm or decline a booking (website)
+      summary: Staff confirm or decline a booking (Endpoint 24, G5)
+      description: >
+        Only a pending booking can be decided, and only by staff at the centre that runs the booking's
+        course. confirmed and declined are final.
       security: [{ staffToken: [] }]
       parameters:
         - $ref: '#/components/parameters/BookingId'
@@ -160,10 +297,223 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Booking' }
         '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+
+  /api/auth/register:
+    post:
+      summary: Create an account and log it in (Endpoint 8, G1)
+      description: >
+        Anyone can create a graduate account. A staff account also needs centreId and the inviteCode
+        that this deployment was configured with; when no invite code is configured, staff accounts
+        cannot be created this way and the answer is 403. The password is stored only as a hash.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewUser' }
+      responses:
+        '201':
+          description: The new account and its login token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+
+  /api/auth/login:
+    post:
+      summary: Log in and get a token (Endpoint 9, G1)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Credentials' }
+      responses:
+        '200':
+          description: The account and a new login token (valid for 7 days)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/InvalidLogin' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+
+  /api/auth/logout:
+    post:
+      summary: Log out, so the token stops working (Endpoint 10, G1)
+      security: [{ userToken: [] }]
+      responses:
+        '204': { description: Logged out; the token no longer works }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+
+  /api/me:
+    get:
+      summary: The logged in user (Endpoint 11, G1)
+      security: [{ userToken: [] }]
+      responses:
+        '200':
+          description: The user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+
+  /api/enrolments:
+    post:
+      summary: Enrol the logged in graduate in a course (Endpoint 12, G2)
+      security: [{ userToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewEnrolment' }
+      responses:
+        '201':
+          description: The enrolment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Enrolment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+
+  /api/me/enrolments:
+    get:
+      summary: The graduate's enrolments and certificates (Endpoint 13, G2)
+      security: [{ userToken: [] }]
+      responses:
+        '200':
+          description: The graduate's enrolments, oldest first; an empty array when there are none
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Enrolment' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/me/applications:
+    get:
+      summary: The graduate's Kazi applications with their latest status (Endpoint 16, G3)
+      description: >
+        Every application this graduate made through Ujuzi, oldest first, including withdrawn ones
+        (status cancelled). The status is the latest one Ujuzi has heard from Kazi Connect.
+      security: [{ userToken: [] }]
+      responses:
+        '200':
+          description: The applications; an empty array when there are none
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Application' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      summary: Apply for a Kazi job on the graduate's behalf (Endpoint 15, G3)
+      description: >
+        Ujuzi creates the application at Kazi Connect for the logged in graduate and keeps Kazi's
+        application id. The job must exist and be active, and preferredDate must be in the future.
+        Each call makes a new application, so this is not idempotent.
+      security: [{ userToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewApplication' }
+      responses:
+        '201':
+          description: The application, pending
+          headers:
+            Location:
+              description: Path of the new application
+              schema: { type: string, example: /api/me/applications/app_1005 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Application' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+
+  /api/me/applications/feed:
+    get:
+      summary: WebSocket that pushes each change to the graduate's applications (Endpoint 19, G3)
+      description: >
+        A plain GET that upgrades to a WebSocket, so connect with a WebSocket client (ws:// or wss://),
+        not a normal HTTP request. Swagger UI cannot open WebSockets, so Try it out answers 426.
+
+
+        Browsers cannot set headers on a WebSocket, so the connection is authenticated by its first
+        message, sent within 5 seconds of connecting: {"type":"auth","token":"YOUR_TOKEN"}. The server
+        answers {"type":"ready"} and from then on sends one JSON FeedEvent for every status change of
+        one of the graduate's applications. A bad or missing token closes the socket with code 4401.
+      security: []
+      responses:
+        '101':
+          description: >
+            Switching Protocols. After the auth message, each message the server sends is one FeedEvent,
+            shown below.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FeedEvent' }
+        '426': { $ref: '#/components/responses/UpgradeRequired' }
+
+  /api/me/applications/{id}:
+    put:
+      summary: Reschedule a pending application (Endpoint 17, G3)
+      description: >
+        id is Kazi's application id. Sets an absolute state: leaving note out clears it, and sending the
+        same body twice leaves the same application. Only a pending application can be changed.
+      security: [{ userToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ApplicationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplicationUpdate' }
+      responses:
+        '200':
+          description: The updated application
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Application' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+    delete:
+      summary: Withdraw a pending application (Endpoint 18, G3)
+      description: >
+        id is Kazi's application id. The application is withdrawn at Kazi Connect and stays in the
+        graduate's list with status cancelled. Only a pending application can be withdrawn.
+      security: [{ userToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ApplicationId'
+      responses:
+        '204': { description: Withdrawn }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '502': { $ref: '#/components/responses/BadGateway' }
 
 components:
   securitySchemes:
@@ -171,11 +521,15 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: One key per consuming system, issued by Ujuzi (from Week 9).
+      description: One key per consuming system, issued by Ujuzi. Only a hash of it is stored.
+    userToken:
+      type: http
+      scheme: bearer
+      description: Login token of a graduate or staff member, from POST /api/auth/register or POST /api/auth/login.
     staffToken:
       type: http
       scheme: bearer
-      description: Staff login token from POST /api/auth/login.
+      description: Login token of a staff member (the same kind of token as userToken, for an account with the staff role).
 
   parameters:
     CourseId:
@@ -188,6 +542,12 @@ components:
       in: path
       required: true
       schema: { type: string, example: bkg_6001 }
+    ApplicationId:
+      name: id
+      in: path
+      required: true
+      description: Kazi Connect's application id
+      schema: { type: string, example: app_1005 }
 
   responses:
     BadRequest:
@@ -197,13 +557,31 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           example: { message: 'preferredStart must be a future date-time, for example 2026-11-28T08:00:00Z' }
     Unauthorized:
-      description: Missing or invalid key or token
+      description: Missing or invalid partner key
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { message: 'Send your partner key as X-API-Key' }
+    UnauthorizedEither:
+      description: Neither a valid partner key nor a valid login token was sent
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Send your partner key as X-API-Key, or log in and send Authorization: Bearer YOUR_TOKEN' }
+    LoginRequired:
+      description: Missing, invalid or expired login token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Log in and send Authorization: Bearer YOUR_TOKEN' }
+    InvalidLogin:
+      description: The email or the password is wrong
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Email or password is wrong' }
     Forbidden:
-      description: Logged in, but not staff at this course's centre
+      description: Not allowed for this account (wrong role, another centre's record, or staff sign-up closed)
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -214,12 +592,30 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { message: 'Course crs_999 not found' }
+    PayloadTooLarge:
+      description: The request body is larger than 20 KB; nothing was changed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Request body must be 20 KB or less' }
     Conflict:
       description: Not allowed in the resource's current state
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { message: 'Booking bkg_6001 is confirmed; only pending bookings can be changed' }
+    BadGateway:
+      description: Kazi Connect could not be reached, or answered something unusable; nothing was changed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Kazi Connect could not be reached. Try again in a minute.' }
+    UpgradeRequired:
+      description: Upgrade Required. The request was plain HTTP, not a WebSocket upgrade.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Connect to this endpoint with a WebSocket client' }
 
   schemas:
     Course:
@@ -245,6 +641,25 @@ components:
         nextStart: { type: string, format: date-time, example: '2026-11-23T07:00:00Z' }
         certificateLevel: { type: string, enum: [short-course, grade-III, grade-II, grade-I], example: short-course }
 
+    NewCourse:
+      type: object
+      additionalProperties: false
+      required: [title, category, durationWeeks, feeKes, nextStart, certificateLevel]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120, example: 'Food hygiene and event service' }
+        category:
+          type: string
+          enum: [accommodation, campus, catering, cleaning, electrical, events, plumbing, security, tutoring]
+          example: catering
+        durationWeeks: { type: integer, minimum: 1, maximum: 104, example: 2 }
+        feeKes: { type: integer, minimum: 0, maximum: 1000000, description: Per trainee, KES, example: 3500 }
+        nextStart:
+          type: string
+          format: date-time
+          description: When the next intake starts; must be in the future, in the same formats as a booking's preferredStart.
+          example: '2026-11-23T07:00:00Z'
+        certificateLevel: { type: string, enum: [short-course, grade-III, grade-II, grade-I], example: short-course }
+
     CertificateCheck:
       type: object
       required: [certificateNo, valid, courseTitle, level, issuedOn, holder]
@@ -256,6 +671,13 @@ components:
         issuedOn: { type: string, format: date, example: '2026-08-14' }
         holder: { type: string, description: First name and initial only, example: 'Achieng O.' }
 
+    NewCertificate:
+      type: object
+      additionalProperties: false
+      required: [enrolmentId]
+      properties:
+        enrolmentId: { type: string, example: enr_0001 }
+
     NewBooking:
       type: object
       additionalProperties: false
@@ -263,8 +685,20 @@ components:
       properties:
         courseId: { type: string, example: crs_501 }
         crewSize: { type: integer, minimum: 1, maximum: 40, example: 6 }
-        preferredStart: { type: string, format: date-time, example: '2026-11-28T08:00:00Z' }
-        eventName: { type: string, maxLength: 120, example: 'Wanjiku and Otieno wedding' }
+        preferredStart:
+          type: string
+          format: date-time
+          description: >
+            Must be in the future. An RFC 3339 date-time with a Z or an offset (2026-11-28T08:00:00Z or
+            2026-11-28T11:00:00+03:00); a date with no time, a time with no zone, or a day that does not
+            exist (30 February) is a 400. Answered as UTC with a Z and no milliseconds.
+          example: '2026-11-28T08:00:00Z'
+        eventName:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Surrounding spaces are removed before the length is checked and the name is stored.
+          example: 'Wanjiku and Otieno wedding'
 
     BookingUpdate:
       type: object
@@ -272,7 +706,11 @@ components:
       required: [crewSize, preferredStart]
       properties:
         crewSize: { type: integer, minimum: 1, maximum: 40, example: 8 }
-        preferredStart: { type: string, format: date-time, example: '2026-11-29T08:00:00Z' }
+        preferredStart:
+          type: string
+          format: date-time
+          description: Must be in the future, in the same formats as when the booking is made.
+          example: '2026-11-29T08:00:00Z'
 
     Booking:
       type: object
@@ -296,6 +734,146 @@ components:
       required: [status]
       properties:
         status: { type: string, enum: [confirmed, declined], example: confirmed }
+
+    User:
+      type: object
+      required: [id, role, email, firstName, lastName, centreId]
+      properties:
+        id: { type: string, example: grd_0101 }
+        role: { type: string, enum: [graduate, staff], example: graduate }
+        email: { type: string, format: email, example: achieng.otieno@example.com }
+        firstName: { type: string, example: Achieng }
+        lastName: { type: string, example: Otieno }
+        centreId:
+          type: string
+          nullable: true
+          description: The centre a staff member works at; null for a graduate.
+          example: null
+
+    NewUser:
+      type: object
+      additionalProperties: false
+      required: [role, email, password, firstName, lastName]
+      properties:
+        role: { type: string, enum: [graduate, staff], example: graduate }
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Matched ignoring upper and lower case; one account per email.
+          example: achieng.otieno@example.com
+        password: { type: string, minLength: 8, maxLength: 128, example: 'a long passphrase' }
+        firstName: { type: string, minLength: 1, maxLength: 60, example: Achieng }
+        lastName: { type: string, minLength: 1, maxLength: 60, example: Otieno }
+        centreId: { type: string, description: Staff only. The centre the account belongs to., example: cen_11 }
+        inviteCode: { type: string, description: Staff only. The invite code this deployment was configured with., example: 'ask-your-centre-lead' }
+
+    Credentials:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, example: achieng.otieno@example.com }
+        password: { type: string, example: 'a long passphrase' }
+
+    AuthResponse:
+      type: object
+      required: [token, expiresAt, user]
+      properties:
+        token:
+          type: string
+          description: 'Send as "Authorization: Bearer TOKEN". Shown once; only its hash is stored.'
+          example: '3f9a1c0e5b7d4a28a6c1e0f94b2d7c58e1a30b6f9d4c27a85e0b1c3d6f2a9e47'
+        expiresAt: { type: string, format: date-time, example: '2026-10-28T10:00:00Z' }
+        user: { $ref: '#/components/schemas/User' }
+
+    NewEnrolment:
+      type: object
+      additionalProperties: false
+      required: [courseId]
+      properties:
+        courseId: { type: string, example: crs_501 }
+
+    Enrolment:
+      type: object
+      required: [id, courseId, courseTitle, enrolledAt, certificateNo]
+      properties:
+        id: { type: string, example: enr_0001 }
+        courseId: { type: string, example: crs_501 }
+        courseTitle: { type: string, example: 'Food hygiene and event service' }
+        enrolledAt: { type: string, format: date-time, example: '2026-08-01T09:00:00Z' }
+        certificateNo:
+          type: string
+          nullable: true
+          description: The certificate issued for this enrolment; null until staff issue one.
+          example: UJZ-2026-00123
+
+    JobMatch:
+      type: object
+      required: [jobId, title, category, county, area, duration, urgent, payRange]
+      properties:
+        jobId: { type: string, description: Kazi Connect's job id, example: job_12345 }
+        title: { type: string, example: Event Catering Assistant }
+        category:
+          type: string
+          enum: [accommodation, campus, catering, cleaning, electrical, events, plumbing, security, tutoring]
+          example: catering
+        county: { type: string, example: Nairobi }
+        area: { type: string, example: Westlands }
+        duration: { type: string, description: 'How long the work takes, in plain words', example: 'Part time, 3 months' }
+        urgent: { type: boolean, example: true }
+        payRange:
+          type: object
+          required: [minKes, maxKes]
+          properties:
+            minKes: { type: integer, example: 15000 }
+            maxKes: { type: integer, example: 22000 }
+
+    NewApplication:
+      type: object
+      additionalProperties: false
+      required: [jobId, preferredDate]
+      properties:
+        jobId: { type: string, minLength: 1, example: job_12345 }
+        preferredDate:
+          type: string
+          format: date-time
+          description: When the graduate can start; must be in the future, in the same formats as a booking's preferredStart.
+          example: '2027-01-15T09:00:00Z'
+        note: { type: string, maxLength: 500, example: Available after 2pm on weekdays }
+
+    ApplicationUpdate:
+      type: object
+      additionalProperties: false
+      required: [preferredDate]
+      properties:
+        preferredDate: { type: string, format: date-time, example: '2027-01-22T14:00:00Z' }
+        note: { type: string, maxLength: 500, description: Replaces the note. Leave it out to clear the note., example: Rescheduled to the following week }
+
+    Application:
+      type: object
+      required: [applicationId, jobId, preferredDate, note, status, createdAt]
+      properties:
+        applicationId: { type: string, description: Kazi Connect's application id, example: app_1005 }
+        jobId: { type: string, example: job_12345 }
+        preferredDate: { type: string, format: date-time, example: '2027-01-15T09:00:00Z' }
+        note: { type: string, description: Empty string when the graduate left no note., example: Available after 2pm on weekdays }
+        status:
+          type: string
+          enum: [pending, accepted, filled, cancelled]
+          description: >
+            pending is waiting for a decision, accepted means the job is the graduate's, filled means the
+            job went to someone else, and cancelled means the graduate withdrew the application.
+          example: pending
+        createdAt: { type: string, format: date-time, example: '2026-11-20T10:00:00Z' }
+
+    FeedEvent:
+      type: object
+      required: [applicationId, status, updatedAt]
+      properties:
+        applicationId: { type: string, example: app_1005 }
+        status: { type: string, enum: [pending, accepted, filled, cancelled], example: accepted }
+        updatedAt: { type: string, format: date-time, example: '2026-11-21T08:30:00Z' }
 
     Error:
       type: object

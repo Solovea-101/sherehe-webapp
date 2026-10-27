@@ -30,9 +30,10 @@ afterEach(() => {
 });
 
 /** A crew training that exists both at Ujuzi (pending) and in our store. */
+let bookingNo = 0; // Ujuzi refuses a second pending booking with the same course and event name
 async function trainingAtUjuzi(crewSize = 4) {
   const store = await getStore();
-  const booking = await createBooking({ courseId: 'crs_501', crewSize, preferredStart: new Date(Date.now() + 30 * 86_400_000), eventName: 'Poller test' });
+  const booking = await createBooking({ courseId: 'crs_501', crewSize, preferredStart: new Date(Date.now() + 30 * 86_400_000), eventName: `Poller test ${++bookingNo}` });
   const row = await store.crewTrainings.create({
     organiser_id: 'usr_1001', event_id: 'evt_2001', course_id: 'crs_501', ujuzi_booking_id: booking.id,
     crew_size: crewSize, preferred_start: new Date(booking.preferredStart), status: 'pending',
