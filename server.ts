@@ -13,6 +13,19 @@ const WS_PATH = '/ws';
 const isDev = () => process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
 
 /**
+ * The caller's address. Behind Render's proxy the socket is the proxy, so with TRUST_PROXY=true the
+ * last entry of X-Forwarded-For (the one the proxy itself added) is used instead.
+ */
+function clientAddress(req: http.IncomingMessage): string {
+  if (process.env.TRUST_PROXY === 'true') {
+    const forwarded = req.headers['x-forwarded-for'];
+    const last = (Array.isArray(forwarded) ? forwarded.join(',') : forwarded ?? '').split(',').pop()?.trim();
+    if (last) return last;
+  }
+  return req.socket.remoteAddress ?? 'unknown';
+}
+
+/**
  * Builds the HTTP server around Next.js (website and /api routes) without listening, so Supertest
  * can drive it. Requests wait for Next.js to finish preparing.
  */
@@ -25,6 +38,8 @@ export function createServer(): http.Server {
   ready.catch((err: unknown) => console.error('Next.js failed to start:', err));
 
   server.on('request', async (req, res) => {
+    // Who is calling, for the rate limiter. Always set here, so a caller cannot choose its own value.
+    req.headers['x-sherehe-client-ip'] = clientAddress(req);
     try {
       await ready;
       await handle(req, res);

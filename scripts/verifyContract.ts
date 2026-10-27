@@ -260,6 +260,7 @@ async function main(): Promise<number> {
   const partnerKey = 'shk_verify-run-key-not-a-real-credential';
   process.env.PARTNER_KEYS = sha256Hex(partnerKey);
   delete process.env.REQUIRE_PARTNER_KEY;
+  process.env.RATE_LIMIT_MAX = '0'; // this script sends its 120+ requests in seconds; the limiter has its own tests
 
   const root = process.cwd();
   const contractFile = path.join(root, 'openapi.yaml');

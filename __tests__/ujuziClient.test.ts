@@ -218,6 +218,7 @@ describe('when Ujuzi misbehaves, every call fails the same way: PartnerUnavailab
     ['refuses our key', 'unauthorized', /refused our API key/],
     ['answers with a page that is not JSON', 'garbage', /not JSON/],
     ['redirects somewhere else', 'redirect', /redirect/],
+    ['limits us with a 429 (Ujuzi 0.3.0)', 'rateLimited', /unexpected status 429/],
   ] as const)('when Ujuzi %s', async (_label, mode, pattern) => {
     stub.mode = mode;
     for (const [name, run] of calls) {

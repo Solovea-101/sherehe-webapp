@@ -43,6 +43,26 @@ There are two kinds of caller, and each endpoint says which it accepts (the full
 | `PATCH /api/offers/{offerId}`, everything under `/api/events/{eventId}/offers`, `/api/me`, `/api/training-options`, `/api/crew-trainings`, `/api/certificate-checks`, `POST /api/events`, `POST /api/events/{eventId}/roles` | a logged-in organiser (and, where it matters, the organiser of that event) |
 | `POST /api/auth/register`, `POST /api/auth/login` | anyone |
 
+### Rate limit
+
+Each partner key may make **100 requests a minute**. Everything else (the website, a missing or wrong key) is counted per address, also 100 a minute, and sign-up and login are limited to **10 a minute** per address, because that is where passwords get guessed. The count restarts after a minute. Over the limit you get `429`, the request is **not** carried out, and the answer says how long to wait:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 42
+Content-Type: application/json
+
+{ "message": "Too many requests. Wait a little and try again.", "retryAfter": 42 }
+```
+
+A well-behaved client waits `Retry-After` seconds and tries again. 100 a minute is the course's default and well above what [API_NEEDS.md](API_NEEDS.md) describes for Kazi Connect (K1 and K2 on page loads, K4 every few minutes per pending offer, K3 and K5 a few times a day); it has not been measured against Kazi's real traffic. The counts live in the server's memory: they start again when it restarts and are not shared between copies of the server. A real call, with a placeholder key:
+
+```bash
+curl -i -H "X-API-Key: <your-api-key>" "http://localhost:3000/api/events?status=upcoming"
+```
+
+The settings are `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_LOGIN_MAX` (below); `RATE_LIMIT_MAX=0` switches the limit off, which only the tests do. Behind Render's proxy also set `TRUST_PROXY=true` so callers are told apart by their real address. [SECURITY_AUDIT.md](SECURITY_AUDIT.md) records the review that went with this, and `evidence/week09/rate-limit-demo.txt` shows a real run with the limit lowered to 3.
+
 ## One example per major endpoint
 
 These run in order against a fresh copy. `YOUR_KEY` is a partner key and `TOKEN` is the organiser token from step 6.
@@ -334,6 +354,7 @@ Every failure answers with one field, `message`, in plain English, and nothing i
 | 405 | The method is not allowed here | `DELETE /api/events/evt_2001`. The `Allow` header lists what is |
 | 409 | Not allowed in the current state | The role is full, a second pending offer on a role, withdrawing or re-deciding a decided offer, changing a booking the training centre has already decided |
 | 413 | Body too large | More than 20 KB of JSON |
+| 429 | Too many requests | Over the rate limit. The request was not carried out; wait `Retry-After` seconds (also `retryAfter` in the body) |
 | 500 | Our bug | Never shows internal details; the cause is in the server log |
 | 502 | Ujuzi could not be reached or gave an answer we cannot use | Ujuzi asleep, slow (over 10 s), refusing our key, or down. Only the endpoints that need Ujuzi are affected; try again in a minute |
 
@@ -413,10 +434,12 @@ Each step prints `PASS` or `FAIL`. A step that fails only because another system
 | `UJUZI_TIMEOUT_MS`, `BOOKING_POLL_MS` | Optional tuning of the Ujuzi timeouts and the booking check (default every five minutes) |
 | `SHEREHE_URL`, `SHEREHE_PARTNER_KEY`, `SHEREHE_CHECK_EMAIL`, `SHEREHE_CHECK_PASSWORD` | Only for `npm run ring:check` |
 | `KAZI_URL`, `UJUZI_URL`, `KAZI_EMPLOYER_EMAIL`, `KAZI_EMPLOYER_PASSWORD`, `UJUZI_STAFF_EMAIL`, `UJUZI_STAFF_PASSWORD` | Only for `npm run ring:e2e`; the defaults are the local ring's ports and demo accounts |
+| `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_LOGIN_MAX` | Requests per window for a partner key or an address (default 100), the window (default 60000 ms), and sign-ups plus logins per address (default 10). `RATE_LIMIT_MAX=0` turns the limit off |
+| `TRUST_PROXY` | `true` on Render: the caller's address is the last entry of `X-Forwarded-For`, not the proxy's socket |
 | `SESSION_SECRET` | Reserved. Logins are random tokens whose hashes are stored, so nothing reads it yet |
 
 See `.env.example`. Real values live in Render's settings, never in git.
 
 ## More documents
 
-`TEAM_CHARTER.md`, `API_NEEDS.md`, `ENDPOINT_LIST.md`, `openapi.yaml`, `CONTRACT_QUESTIONS.md`, `CONTRACT_DEVIATIONS.md`, `VERIFICATION.md`, `PARTNER_TEST_RESULTS.md`, `BLIND_TEST_REPORT.md`, `HELD_ISSUES.md`.
+`SECURITY_AUDIT.md`, `TEAM_CHARTER.md`, `API_NEEDS.md`, `ENDPOINT_LIST.md`, `openapi.yaml`, `CONTRACT_QUESTIONS.md`, `CONTRACT_DEVIATIONS.md`, `VERIFICATION.md`, `PARTNER_TEST_RESULTS.md`, `BLIND_TEST_REPORT.md`, `HELD_ISSUES.md`.

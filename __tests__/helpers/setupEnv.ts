@@ -3,6 +3,8 @@
 // blank those settings (an empty string counts as "already set" and survives Next's own .env load).
 process.env.DATABASE_URL = '';
 process.env.PARTNER_KEYS = '';
+// The tests send hundreds of requests a second from one address; the limiter has its own tests.
+process.env.RATE_LIMIT_MAX = '0';
 // `npm run test:partner` aims at the real Ujuzi on purpose, so it keeps the Ujuzi settings it was given.
 if (process.env.PARTNER_TESTS !== 'true') {
   process.env.UJUZI_API_URL = ''; // tests that need Ujuzi point this at the local stub
