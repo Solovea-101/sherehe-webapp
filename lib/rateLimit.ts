@@ -54,7 +54,11 @@ export function hit(bucket: string, max: number, windowMs: number, now: number =
   }
   entry.count += 1;
   if (entry.count <= max) return { limited: false };
-  return { limited: true, retryAfter: Math.max(1, Math.ceil((entry.resetAt - now) / 1000)), limit: max };
+  const retryAfter = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+  // Said once per caller per window, so a runaway loop does not fill the log. The bucket is a
+  // consumer name or an address, never a key.
+  if (entry.count === max + 1) console.warn(`Rate limit: ${bucket} went over ${max} requests in ${Math.round(windowMs / 1000)} s; answering 429 for ${retryAfter} s`);
+  return { limited: true, retryAfter, limit: max };
 }
 
 /** For the tests: forget every count. */

@@ -42,6 +42,15 @@ describe('the counter', () => {
     expect(hit('a', 3, 60_000, t + 10_000)).toEqual({ limited: true, retryAfter: 50, limit: 3 });
     expect(hit('b', 3, 60_000, t + 10_000).limited).toBe(false); // another bucket is untouched
   });
+  it('says so in the log once per window, naming the caller and no key', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const t = 7_000_000;
+    for (let i = 0; i < 6; i += 1) hit('key:kazi', 3, 60_000, t);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('Rate limit: key:kazi went over 3 requests in 60 s; answering 429 for 60 s');
+    hit('key:kazi', 3, 60_000, t + 60_000); // a new window starts the count again
+    warn.mockRestore();
+  });
   it('starts a fresh window once the old one is over', () => {
     const t = 5_000_000;
     for (let i = 0; i < 4; i += 1) hit('a', 3, 1000, t);
