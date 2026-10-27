@@ -10,7 +10,7 @@ const OTHER_KEY = 'shk_a-second-system-test-key-abcdef';
 
 beforeEach(() => {
   resetRateLimit();
-  process.env.PARTNER_KEYS = `${sha256Hex(KAZI_KEY)},${sha256Hex(OTHER_KEY)}`;
+  process.env.PARTNER_KEYS = `kazi:${sha256Hex(KAZI_KEY)},other:${sha256Hex(OTHER_KEY)}`;
   process.env.RATE_LIMIT_MAX = '3';
   process.env.RATE_LIMIT_LOGIN_MAX = '2';
   delete process.env.RATE_LIMIT_WINDOW_MS;
@@ -59,7 +59,7 @@ describe('the counter', () => {
 });
 
 describe('who is counted', () => {
-  const env = { PARTNER_KEYS: `${sha256Hex(KAZI_KEY)},${sha256Hex(OTHER_KEY)}`, RATE_LIMIT_MAX: '2', RATE_LIMIT_LOGIN_MAX: '1' };
+  const env = { PARTNER_KEYS: `kazi:${sha256Hex(KAZI_KEY)},other:${sha256Hex(OTHER_KEY)}`, RATE_LIMIT_MAX: '2', RATE_LIMIT_LOGIN_MAX: '1' };
   const call = (key: string | null, ip: string, method = 'GET', pathname = '/api/events') => checkRequest({ method, pathname, key, clientIp: ip }, env);
 
   it('counts an issued key on its own, whatever address it comes from', () => {

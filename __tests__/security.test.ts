@@ -13,7 +13,7 @@ const ujuzi = useUjuziStub();
 
 const KAZI_KEY = 'shk_kazi-connect-test-key-0123456789';
 beforeEach(() => {
-  process.env.PARTNER_KEYS = sha256Hex(KAZI_KEY);
+  process.env.PARTNER_KEYS = `kazi:${sha256Hex(KAZI_KEY)}`;
 });
 afterEach(() => {
   process.env.PARTNER_KEYS = '';

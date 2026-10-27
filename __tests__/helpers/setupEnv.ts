@@ -3,6 +3,9 @@
 // blank those settings (an empty string counts as "already set" and survives Next's own .env load).
 process.env.DATABASE_URL = '';
 process.env.PARTNER_KEYS = '';
+// The partner API refuses everyone when no key is set. Most suites predate that and call it without
+// a key, so they ask for it open (never honoured in production); partnerKey.test.ts turns this off.
+process.env.ALLOW_OPEN_PARTNER_API = 'true';
 // The tests send hundreds of requests a second from one address; the limiter has its own tests.
 process.env.RATE_LIMIT_MAX = '0';
 // `npm run test:partner` aims at the real Ujuzi on purpose, so it keeps the Ujuzi settings it was given.

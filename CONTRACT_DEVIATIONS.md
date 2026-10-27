@@ -73,6 +73,18 @@ No entry from the team yet. TODO, same rule.
 - **Needs the humans:** issuing Kazi its key, setting `PARTNER_KEYS` and `REQUIRE_PARTNER_KEY=true` in Render, setting `UJUZI_API_KEY` there (once Ujuzi issues one), and telling Kazi's sub-team **before** this is deployed (R8): Kazi must start sending `X-API-Key` on endpoints 1-6.
 - **`npm run ring:check` (R9)** is built. Its report was only ever run against local copies; the real run needs the live URLs and keys. See HELD_ISSUES.md, H2, H3 and H8.
 
+## Partner key names, offer ownership, fail-closed keys (2026-10-28)
+
+Agreed between Sherehe's agent, Kazi Connect's agent and Ujuzi's agent on 2026-10-27, from the Week 9 audit. `openapi.yaml` has still not been handed off, so `info.version` stays 0.1.0; this is the list Kazi must be told when it is.
+
+- **Offers belong to the key that made them (endpoints 5 and 6).** Reading or withdrawing another system's offer now answers `404` with the usual wording, so nothing is given away. Kazi is the only partner and its behaviour is unchanged. Offers are bound to a stable consumer name, not to a key, so rotating Kazi's key does not hide its offers.
+- **`PARTNER_KEYS` is `name:hash`.** The old bare-hash form is refused. Kazi's own settings do not change: it only sends its key.
+- **The partner API fails closed.** With no usable key every call is `401`, in every environment. The earlier open mode and `REQUIRE_PARTNER_KEY` are gone; `ALLOW_OPEN_PARTNER_API=true` exists for the test suite and is ignored in production.
+- **`429` on every operation** (100 requests a minute per key, 10 a minute for sign-up and login), with `Retry-After` and `{ message, retryAfter }`. Kazi does not read `Retry-After` yet; it treats a 429 as a failed call.
+- **Our own use of Ujuzi's 429:** the booking check waits for Ujuzi's `Retry-After` and resumes; a person's action answers our 502.
+- **Not changed, on purpose:** sign-up still says an account exists (409); certificate checks show the holder name exactly as Ujuzi sends it (first name and an initial). See SECURITY_AUDIT.md.
+- **Flagged to Kazi Connect:** the three questions were put to its agent on 2026-10-27 and answered the same day (key-only offers, owner by name, fail closed). Telling its sub-team before deployment (R8) is still the humans' job.
+
 ## Ujuzi's contract adopted (2026-10-27)
 
 This is a change to the contract Sherehe consumes, not to ours. `info.version` of Sherehe's own `openapi.yaml` is unchanged (0.1.0).

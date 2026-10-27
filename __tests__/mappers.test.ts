@@ -43,7 +43,7 @@ describe('row mappers', () => {
 
   it('maps an offer row to the contract shape and nothing else', () => {
     const row: OfferRow = {
-      id: 'ofr_4001', role_id: 'rol_3001', event_id: 'evt_2001', workers_offered: 6, note: '', status: 'pending', created_at,
+      id: 'ofr_4001', role_id: 'rol_3001', event_id: 'evt_2001', workers_offered: 6, note: '', status: 'pending', partner: 'kazi', created_at,
     };
     const offer = toOffer(row);
     expect(keysOf(offer)).toEqual(OFFER_KEYS);

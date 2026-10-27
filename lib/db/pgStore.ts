@@ -11,6 +11,7 @@ import {
   type Store,
   type UserRow,
   type WithdrawResult,
+  DEFAULT_PARTNER,
 } from './types';
 
 // PostgreSQL error codes this file turns into the Store's own errors.
@@ -134,8 +135,8 @@ export function createPgStore(pool: Pool): Store {
       async create(input) {
         const row = await guarded(
           one<OfferRow>(
-            `INSERT INTO offers (role_id, event_id, workers_offered, note) VALUES ($1, $2, $3, $4) RETURNING *`,
-            [input.role_id, input.event_id, input.workers_offered, input.note],
+            `INSERT INTO offers (role_id, event_id, workers_offered, note, partner) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+            [input.role_id, input.event_id, input.workers_offered, input.note, input.partner ?? DEFAULT_PARTNER],
           ),
           `Role ${input.role_id} already has a pending offer`,
           `Role ${input.role_id} or event ${input.event_id} does not exist`,

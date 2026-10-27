@@ -3,6 +3,7 @@ import path from 'node:path';
 import { loadEnvConfig } from '@next/env';
 import next from 'next';
 import { WebSocketServer } from 'ws';
+import { describePartnerKeys } from '@/lib/auth/partnerKeyConfig';
 import { startBookingPoller } from '@/lib/jobs/bookingPoller';
 
 // The one path where our own WebSocket upgrades are accepted. Next.js keeps /_next/* (dev hot reload).
@@ -81,6 +82,8 @@ if (path.basename(process.argv[1] ?? '') === 'server.ts') {
   server.listen(port, () => {
     console.log(`> Sherehe listening on http://localhost:${port} (${isDev() ? 'development' : process.env.NODE_ENV})`);
   });
+  const partnerKeys = describePartnerKeys(); // a count and names, never a key
+  console[partnerKeys.level](partnerKeys.text);
   const stopPoller = startBookingPoller();
 
   // Render sends SIGTERM when it replaces an instance; finish in-flight requests, then leave.

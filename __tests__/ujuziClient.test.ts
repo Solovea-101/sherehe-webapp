@@ -1,5 +1,5 @@
 import {
-  BACKGROUND_TIMEOUT_MS, CACHE_TTL_MS, PartnerRejectedError, PartnerUnavailableError, USER_TIMEOUT_MS, clearPartnerCache,
+  BACKGROUND_TIMEOUT_MS, CACHE_TTL_MS, PartnerRateLimitedError, PartnerRejectedError, PartnerUnavailableError, USER_TIMEOUT_MS, clearPartnerCache,
 } from '@/lib/clients/fetcher';
 import {
   cancelBooking, createBooking, getBooking, getCertificate, listCourses, updateBooking,
@@ -218,13 +218,23 @@ describe('when Ujuzi misbehaves, every call fails the same way: PartnerUnavailab
     ['refuses our key', 'unauthorized', /refused our API key/],
     ['answers with a page that is not JSON', 'garbage', /not JSON/],
     ['redirects somewhere else', 'redirect', /redirect/],
-    ['limits us with a 429 (Ujuzi 0.3.0)', 'rateLimited', /unexpected status 429/],
   ] as const)('when Ujuzi %s', async (_label, mode, pattern) => {
     stub.mode = mode;
     for (const [name, run] of calls) {
       await expect(run()).rejects.toEqual(unavailable(pattern));
       expect(name).toBeTruthy();
     }
+  });
+
+  it('when Ujuzi limits us with a 429 (Ujuzi 0.3.0), every call fails as unavailable and carries Retry-After', async () => {
+    stub.mode = 'rateLimited'; // Retry-After: 30
+    for (const [name, run] of calls) {
+      const err: unknown = await run().catch((e: unknown) => e);
+      expect([name, err instanceof PartnerUnavailableError]).toEqual([name, true]); // our clients get the usual 502
+      expect([name, err instanceof PartnerRateLimitedError && err.retryAfterSeconds]).toEqual([name, 30]);
+    }
+    stub.mode = 'ok';
+    expect(await listCourses()).toHaveLength(4); // and nothing from the 429 was remembered
   });
 
   it('when Ujuzi is too slow, the call gives up at the timeout', async () => {

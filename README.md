@@ -29,10 +29,12 @@ There are two kinds of caller, and each endpoint says which it accepts (the full
 
 **Partner systems (Kazi Connect)** send `X-API-Key: YOUR_KEY` on every partner endpoint.
 
-- Each consuming system gets its own key. Sherehe stores only the key's SHA-256 hash (`PARTNER_KEYS`), never the key, so a leaked setting cannot be used to call us.
-- The team issues a key with `npm run partner:key`: it prints a new key once (give that to the partner over a secure channel) and the hash line to put in Render's settings. Never put a key in git, in `.env` or in a chat.
+- Each consuming system gets its own key and a name (`kazi`). Sherehe stores only the key's SHA-256 hash, as `name:hash` in `PARTNER_KEYS`, never the key, so a leaked setting cannot be used to call us.
+- The team issues a key with `npm run partner:key -- --name kazi`: it prints a new key once (give that to the partner over a secure channel) and the `name:hash` entry to put in Render's settings. Never put a key in git, in `.env` or in a chat.
+- **Offers belong to the system that made them.** Kazi's offers are filed under `kazi`, and another key gets `404` (the same as for an offer that does not exist) when it reads or withdraws one. To rotate a key, list the new key under the same name next to the old one, switch the partner over, then remove the old entry; the offers stay visible throughout.
 - TODO: how a tester gets a demo key.
-- Without a key, or with a wrong one, every partner endpoint answers `401 {"message": "Send your partner key as X-API-Key"}` and changes nothing. Until `PARTNER_KEYS` is set, a copy of the API stays open and warns about it in its log; set `REQUIRE_PARTNER_KEY=true` on a deployment to refuse everyone until a key is configured.
+- Without a key, or with a wrong one, every partner endpoint answers `401 {"message": "Send your partner key as X-API-Key"}` and changes nothing. **The partner API is closed until a key is set up**, in every environment: with no `PARTNER_KEYS` every key-only call is refused, and the start-up log says `Partner keys loaded: 0`. The log line `Partner keys loaded: N (kazi)` shows a count and names, never a key. (The test suite alone can switch this off with `ALLOW_OPEN_PARTNER_API=true`; that is ignored in production.)
+- **Every API endpoint needs a credential, except the ones you need to get one.** System-to-system endpoints take a partner key; the endpoints the website's pages use take the organiser's login token; open are `POST /api/auth/register`, `POST /api/auth/login`, the pages, `/docs` and `/openapi.yaml`. A browser never holds a partner key: the pages call our API, and our server adds keys when it calls another system.
 
 **Organisers (the website)** log in and send `Authorization: Bearer YOUR_TOKEN`. `POST /api/auth/register` or `POST /api/auth/login` returns the token; it works for seven days, or until `POST /api/auth/logout`.
 
@@ -55,7 +57,7 @@ Content-Type: application/json
 { "message": "Too many requests. Wait a little and try again.", "retryAfter": 42 }
 ```
 
-A well-behaved client waits `Retry-After` seconds and tries again. 100 a minute is the course's default and well above what [API_NEEDS.md](API_NEEDS.md) describes for Kazi Connect (K1 and K2 on page loads, K4 every few minutes per pending offer, K3 and K5 a few times a day); it has not been measured against Kazi's real traffic. The counts live in the server's memory: they start again when it restarts and are not shared between copies of the server. A real call, with a placeholder key:
+A well-behaved client waits `Retry-After` seconds and tries again. Our own booking check does this when Ujuzi answers 429: it pauses for the time Ujuzi asked and carries on, and only a person's own action answers our 502. 100 a minute is the course's default and well above what [API_NEEDS.md](API_NEEDS.md) describes for Kazi Connect (K1 and K2 on page loads, K4 every few minutes per pending offer, K3 and K5 a few times a day); it has not been measured against Kazi's real traffic. The counts live in the server's memory: they start again when it restarts and are not shared between copies of the server. A real call, with a placeholder key:
 
 ```bash
 curl -i -H "X-API-Key: <your-api-key>" "http://localhost:3000/api/events?status=upcoming"
@@ -370,11 +372,11 @@ npm run build
 npm start
 ```
 
-Open http://localhost:3000 for the website, or http://localhost:3000/docs for the docs. With no settings, data is kept in memory and reset to the sample data on every restart, so no database is needed, and the partner endpoints are open (the log warns about it). To try the partner key:
+Open http://localhost:3000 for the website, or http://localhost:3000/docs for the docs. With no settings, data is kept in memory and reset to the sample data on every restart, so no database is needed. The website works, but **the partner endpoints refuse every key until you make one** (the log says `Partner keys loaded: 0`):
 
 ```text
-npm run partner:key                          # prints a new key, and the hash to store
-PARTNER_KEYS=<the hash> npm start            # now partner calls need  X-API-Key: <the key>
+npm run partner:key -- --name kazi           # prints a new key once, and the entry to store
+PARTNER_KEYS=<the entry> npm start           # now partner calls work with  X-API-Key: <the key>
 ```
 
 To try training and certificates without the real Ujuzi, start the local stand-in in a second terminal and point Sherehe at it:
@@ -428,8 +430,8 @@ Each step prints `PASS` or `FAIL`. A step that fails only because another system
 | `PORT` | Port to listen on (default 3000) |
 | `DATABASE_URL` | PostgreSQL. Empty means the in-memory store |
 | `SEED_SAMPLE_DATA` | `false` leaves a new database empty |
-| `PARTNER_KEYS` | SHA-256 hashes of the keys we issued, comma separated. Empty means the partner endpoints are open |
-| `REQUIRE_PARTNER_KEY` | `true` refuses every partner call until a key is configured. Set it on a deployment |
+| `PARTNER_KEYS` | The keys we issued, comma separated, each as `name:SHA-256-hash`. Empty means every partner call is refused |
+| `ALLOW_OPEN_PARTNER_API` | Tests only. `true` lets partner calls through while no key is set. Ignored in production |
 | `UJUZI_API_URL`, `UJUZI_API_KEY` | Our upstream, and our key at Ujuzi |
 | `UJUZI_TIMEOUT_MS`, `BOOKING_POLL_MS` | Optional tuning of the Ujuzi timeouts and the booking check (default every five minutes) |
 | `SHEREHE_URL`, `SHEREHE_PARTNER_KEY`, `SHEREHE_CHECK_EMAIL`, `SHEREHE_CHECK_PASSWORD` | Only for `npm run ring:check` |

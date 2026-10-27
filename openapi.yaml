@@ -175,6 +175,7 @@ paths:
   /api/offers/{offerId}:
     get:
       summary: One offer and its status (K4)
+      description: Only the system that made the offer can read it; another key gets the same 404 as for an offer that does not exist.
       security: [{ partnerKey: [] }]
       parameters:
         - $ref: '#/components/parameters/OfferId'
@@ -189,6 +190,7 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
     delete:
       summary: Withdraw a pending offer (K5)
+      description: Only the system that made the offer can withdraw it; another key gets the same 404 as for an offer that does not exist.
       security: [{ partnerKey: [] }]
       parameters:
         - $ref: '#/components/parameters/OfferId'
@@ -432,7 +434,7 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: One key per consuming system, issued by Sherehe (from Week 9).
+      description: One key per consuming system, issued by Sherehe. A partner endpoint with no valid key answers 401 in every environment.
     organiserToken:
       type: http
       scheme: bearer

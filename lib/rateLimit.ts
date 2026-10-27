@@ -1,5 +1,4 @@
-import { isIssuedKey, readPartnerKeyConfig } from '@/lib/auth/partnerKey';
-import { sha256Hex } from '@/lib/auth/hash';
+import { findIssuedKey, readPartnerKeyConfig } from '@/lib/auth/partnerKeyConfig';
 
 /**
  * Rate limiting (Week 9). A fixed window counted in this server's memory, so it starts again when the
@@ -84,9 +83,9 @@ export function checkRequest(
     if (decision.limited) return decision;
   }
 
+  // One allowance per consumer, however many of its keys are live (a rotation has two).
   const key = req.key?.trim();
-  if (key && key.length <= 200 && isIssuedKey(key, readPartnerKeyConfig(env).hashes)) {
-    return hit(`key:${sha256Hex(key).slice(0, 16)}`, config.max, config.windowMs, now);
-  }
+  const partner = key && key.length <= 200 ? findIssuedKey(key, readPartnerKeyConfig(env).keys) : null;
+  if (partner) return hit(`key:${partner}`, config.max, config.windowMs, now);
   return hit(`ip:${ip}`, config.max, config.windowMs, now);
 }
