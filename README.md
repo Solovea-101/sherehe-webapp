@@ -47,7 +47,7 @@ There are two kinds of caller, and each endpoint says which it accepts (the full
 
 ### Rate limit
 
-Each partner key may make **100 requests a minute**. Everything else (the website, a missing or wrong key) is counted per address, also 100 a minute, and sign-up and login are limited to **10 a minute** per address, because that is where passwords get guessed. The count restarts after a minute. Over the limit you get `429`, the request is **not** carried out, and the answer says how long to wait:
+Each partner (counted by its key's name) may make **300 requests a minute**. Everything else (the website, a missing or wrong key) is counted per address at **100 a minute**, and sign-up and login are limited to **10 a minute** per address, because that is where passwords get guessed. The count restarts after a minute. Over the limit you get `429`, the request is **not** carried out, and the answer says how long to wait:
 
 ```http
 HTTP/1.1 429 Too Many Requests
@@ -57,13 +57,13 @@ Content-Type: application/json
 { "message": "Too many requests. Wait a little and try again.", "retryAfter": 42 }
 ```
 
-A well-behaved client waits `Retry-After` seconds and tries again. Our own booking check does this when Ujuzi answers 429: it pauses for the time Ujuzi asked and carries on, and only a person's own action answers our 502. 100 a minute is the course's default and well above what [API_NEEDS.md](API_NEEDS.md) describes for Kazi Connect (K1 and K2 on page loads, K4 every few minutes per pending offer, K3 and K5 a few times a day); it has not been measured against Kazi's real traffic. The counts live in the server's memory: they start again when it restarts and are not shared between copies of the server. A real call, with a placeholder key:
+A well-behaved client waits `Retry-After` seconds and tries again. Our own booking check does this when Ujuzi answers 429: it pauses for the time Ujuzi asked and carries on, and only a person's own action answers our 502. The partner figure comes from measuring Kazi in the local ring: it refreshes its list of open roles with one call for the events and one for each upcoming event (36 calls with 35 events), re-reads when it misses a role, and polls each pending offer, which passed 100 a minute, got 429 and left Kazi's list stale. 300 leaves room for that; it still grows with the number of upcoming events, so a long-running deployment may need a higher figure or a single call that returns events with their roles. The counts live in the server's memory: they start again when it restarts and are not shared between copies of the server. A real call, with a placeholder key:
 
 ```bash
 curl -i -H "X-API-Key: <your-api-key>" "http://localhost:3000/api/events?status=upcoming"
 ```
 
-The settings are `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_LOGIN_MAX` (below); `RATE_LIMIT_MAX=0` switches the limit off, which only the tests do. Behind Render's proxy also set `TRUST_PROXY=true` so callers are told apart by their real address. [SECURITY_AUDIT.md](SECURITY_AUDIT.md) records the review that went with this, and `evidence/week09/rate-limit-demo.txt` shows a real run with the limit lowered to 3.
+The settings are `RATE_LIMIT_PARTNER_MAX`, `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_LOGIN_MAX` (below); `RATE_LIMIT_MAX=0` switches the limit off, which only the tests do. Behind Render's proxy also set `TRUST_PROXY=true` so callers are told apart by their real address. [SECURITY_AUDIT.md](SECURITY_AUDIT.md) records the review that went with this, and `evidence/week09/rate-limit-demo.txt` shows a real run with the limit lowered to 3.
 
 ## One example per major endpoint
 
@@ -436,7 +436,7 @@ Each step prints `PASS` or `FAIL`. A step that fails only because another system
 | `UJUZI_TIMEOUT_MS`, `BOOKING_POLL_MS` | Optional tuning of the Ujuzi timeouts and the booking check (default every five minutes) |
 | `SHEREHE_URL`, `SHEREHE_PARTNER_KEY`, `SHEREHE_CHECK_EMAIL`, `SHEREHE_CHECK_PASSWORD` | Only for `npm run ring:check` |
 | `KAZI_URL`, `UJUZI_URL`, `KAZI_EMPLOYER_EMAIL`, `KAZI_EMPLOYER_PASSWORD`, `UJUZI_STAFF_EMAIL`, `UJUZI_STAFF_PASSWORD` | Only for `npm run ring:e2e`; the defaults are the local ring's ports and demo accounts |
-| `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_LOGIN_MAX` | Requests per window for a partner key or an address (default 100), the window (default 60000 ms), and sign-ups plus logins per address (default 10). `RATE_LIMIT_MAX=0` turns the limit off |
+| `RATE_LIMIT_PARTNER_MAX`, `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_LOGIN_MAX` | Requests per window for each partner (default 300), for everyone else per address (default 100), the window (default 60000 ms), and sign-ups plus logins per address (default 10). `RATE_LIMIT_MAX=0` turns the whole limit off |
 | `TRUST_PROXY` | `true` on Render: the caller's address is the last entry of `X-Forwarded-For`, not the proxy's socket |
 | `SESSION_SECRET` | Reserved. Logins are random tokens whose hashes are stored, so nothing reads it yet |
 

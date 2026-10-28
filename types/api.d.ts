@@ -296,7 +296,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One offer and its status (K4) */
+        /**
+         * One offer and its status (K4)
+         * @description Only the system that made the offer can read it; another key gets the same 404 as for an offer that does not exist.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -324,7 +327,10 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        /** Withdraw a pending offer (K5) */
+        /**
+         * Withdraw a pending offer (K5)
+         * @description Only the system that made the offer can withdraw it; another key gets the same 404 as for an offer that does not exist.
+         */
         delete: {
             parameters: {
                 query?: never;

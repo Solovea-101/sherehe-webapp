@@ -12,6 +12,7 @@ beforeEach(() => {
   resetRateLimit();
   process.env.PARTNER_KEYS = `kazi:${sha256Hex(KAZI_KEY)},other:${sha256Hex(OTHER_KEY)}`;
   process.env.RATE_LIMIT_MAX = '3';
+  process.env.RATE_LIMIT_PARTNER_MAX = '3';
   process.env.RATE_LIMIT_LOGIN_MAX = '2';
   delete process.env.RATE_LIMIT_WINDOW_MS;
 });
@@ -19,11 +20,12 @@ afterEach(() => {
   process.env.PARTNER_KEYS = '';
   process.env.RATE_LIMIT_MAX = '0';
   delete process.env.RATE_LIMIT_LOGIN_MAX;
+  delete process.env.RATE_LIMIT_PARTNER_MAX;
 });
 
 describe('reading the settings', () => {
   it('defaults to 100 requests a minute, 10 sign-ins a minute', () => {
-    expect(readRateLimitConfig({})).toEqual({ max: 100, loginMax: 10, windowMs: 60_000 });
+    expect(readRateLimitConfig({})).toEqual({ max: 100, partnerMax: 300, loginMax: 10, windowMs: 60_000 });
   });
   it('takes whole numbers, 0 for off, and ignores nonsense', () => {
     expect(readRateLimitConfig({ RATE_LIMIT_MAX: '0' }).max).toBe(0);
@@ -68,7 +70,7 @@ describe('the counter', () => {
 });
 
 describe('who is counted', () => {
-  const env = { PARTNER_KEYS: `kazi:${sha256Hex(KAZI_KEY)},other:${sha256Hex(OTHER_KEY)}`, RATE_LIMIT_MAX: '2', RATE_LIMIT_LOGIN_MAX: '1' };
+  const env = { PARTNER_KEYS: `kazi:${sha256Hex(KAZI_KEY)},other:${sha256Hex(OTHER_KEY)}`, RATE_LIMIT_MAX: '2', RATE_LIMIT_PARTNER_MAX: '2', RATE_LIMIT_LOGIN_MAX: '1' };
   const call = (key: string | null, ip: string, method = 'GET', pathname = '/api/events') => checkRequest({ method, pathname, key, clientIp: ip }, env);
 
   it('counts an issued key on its own, whatever address it comes from', () => {
@@ -82,6 +84,14 @@ describe('who is counted', () => {
     call('invented-2', '10.0.0.9');
     expect(call('invented-3', '10.0.0.9').limited).toBe(true);
     expect(call(null, '10.0.0.10').limited).toBe(false);
+  });
+  it('by default lets a partner make 300 calls a minute (Kazi’s refresh is one per upcoming event) and everyone else 100', () => {
+    const defaults = { PARTNER_KEYS: `kazi:${sha256Hex(KAZI_KEY)}` };
+    const partner = (n: number) => Array.from({ length: n }, () => checkRequest({ method: 'GET', pathname: '/api/events', key: KAZI_KEY, clientIp: '10.2.2.2' }, defaults));
+    expect(partner(300).some((d) => d.limited)).toBe(false); // e.g. 4 refreshes of 36 events plus polling
+    expect(partner(1)[0].limited).toBe(true);
+    const anonymous = Array.from({ length: 101 }, () => checkRequest({ method: 'GET', pathname: '/api/events', key: null, clientIp: '10.3.3.3' }, defaults));
+    expect(anonymous.filter((d) => d.limited)).toHaveLength(1);
   });
   it('gives sign-up and login a smaller allowance of their own', () => {
     expect(call(null, '10.1.1.1', 'POST', '/api/auth/login').limited).toBe(false);
