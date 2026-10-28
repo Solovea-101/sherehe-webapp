@@ -3,11 +3,12 @@ import { requirePartner } from '@/lib/auth/partnerKey';
 import { requireUser } from '@/lib/auth/session';
 import { getStore } from '@/lib/db';
 import { fail, guard, json, methodNotAllowed, readJson } from '@/lib/http';
-import { toEvent, type ApiEvent } from '@/lib/mappers';
+import { toEvent, toEventWithRoles, type ApiEvent, type ApiEventWithRoles } from '@/lib/mappers';
 import { parseEventsQuery, parseNewEvent } from '@/lib/validation';
 
-// K1: upcoming events, optionally in one county. Needs Kazi's partner key, or a logged-in organiser
-// (the website cannot hold a partner key).
+// K1: upcoming events, optionally in one county, optionally with each event's roles (include=roles, so
+// Kazi reads everything in one call instead of one per event). Needs Kazi's partner key, or a
+// logged-in organiser (the website cannot hold a partner key).
 export async function GET(req: NextRequest) {
   return guard(async () => {
     const access = await requirePartner(req, { allowOrganiser: true });
@@ -17,7 +18,11 @@ export async function GET(req: NextRequest) {
 
     const store = await getStore();
     const rows = await store.events.list(query.value);
-    return json<ApiEvent[]>(200, rows.map(toEvent));
+    if (!query.value.includeRoles) return json<ApiEvent[]>(200, rows.map(toEvent));
+
+    // include=roles: the same events, each with its roles, from two queries however many events there are.
+    const roles = await store.roles.listByEvents(rows.map((r) => r.id));
+    return json<ApiEventWithRoles[]>(200, rows.map((row) => toEventWithRoles(row, roles.filter((r) => r.event_id === row.id))));
   });
 }
 

@@ -73,6 +73,15 @@ No entry from the team yet. TODO, same rule.
 - **Needs the humans:** issuing Kazi its key, setting `PARTNER_KEYS` and `REQUIRE_PARTNER_KEY=true` in Render, setting `UJUZI_API_KEY` there (once Ujuzi issues one), and telling Kazi's sub-team **before** this is deployed (R8): Kazi must start sending `X-API-Key` on endpoints 1-6.
 - **`npm run ring:check` (R9)** is built. Its report was only ever run against local copies; the real run needs the live URLs and keys. See HELD_ISSUES.md, H2, H3 and H8.
 
+## `include=roles` on the events list (2026-10-28)
+
+Requested by Kazi Connect's agent, who said it will use it (1 call instead of 1+N) and keep the existing calls as a fallback. `openapi.yaml` has not been handed off, so `info.version` stays 0.1.0, but this is the change Kazi must be told about when it is.
+
+- **Endpoint 1, `GET /api/events?status=upcoming[&county=][&include=roles]`.** New optional query parameter `include`; the only value is `roles`. With it every event also has a `roles` array of the same `Role` objects the roles endpoint returns. Without it, or with a blank value, the answer is exactly as before. Any other value, or `include` twice, is a `400`.
+- **Additive:** no existing field, status code or behaviour changed, so a client that does not send `include` is not affected. The 200 response is documented as either shape (`Event[]` or `EventWithRoles[]`); the new schema is `EventWithRoles`.
+- **Cost:** two database queries however many events there are (`roles.listByEvents`).
+- **Checked:** typecheck; tests in `events.test.ts` (same events and the same roles as the separate calls, county filter, empty roles, 400s, no per-event queries); the new store method against the in-memory and a throwaway PostgreSQL store; `npm run verify`. The rate limit is unchanged and still counts each call.
+
 ## Partner key names, offer ownership, fail-closed keys (2026-10-28)
 
 Agreed between Sherehe's agent, Kazi Connect's agent and Ujuzi's agent on 2026-10-27, from the Week 9 audit. `openapi.yaml` has still not been handed off, so `info.version` stays 0.1.0; this is the list Kazi must be told when it is.

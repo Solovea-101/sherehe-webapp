@@ -153,6 +153,9 @@ export async function buildCases(env: Env): Promise<Case[]> {
     // ---- K1: GET /api/events -----------------------------------------------------------------
     { operation: 'GET /api/events', label: 'upcoming events', url: '/api/events?status=upcoming', expectStatus: 200, unchanged: true,
       check: all(allHave('status', 'upcoming'), sortedBy('startsAt'), includes('evt_2001'), excludes('evt_2007')) },
+    { operation: 'GET /api/events', label: 'include=roles: events with their roles', url: '/api/events?status=upcoming&county=Nairobi&include=roles', expectStatus: 200, unchanged: true,
+      check: all(allHave('county', 'Nairobi'), includes('evt_2001'), (body) => (Array.isArray(body) && body.every((e) => Array.isArray((e as { roles?: unknown }).roles)) ? undefined : 'an event has no roles array')) },
+    { operation: 'GET /api/events', label: 'include=roles: an unknown value', url: '/api/events?status=upcoming&include=offers', expectStatus: 400, unchanged: true },
     { operation: 'GET /api/events', label: 'county filter, lower case', url: '/api/events?status=upcoming&county=nairobi', expectStatus: 200, unchanged: true,
       check: all(allHave('county', 'Nairobi'), includes('evt_2001'), excludes('evt_2006')) },
     { operation: 'GET /api/events', label: 'county filter, upper case', url: '/api/events?status=upcoming&county=MOMBASA', expectStatus: 200, unchanged: true,

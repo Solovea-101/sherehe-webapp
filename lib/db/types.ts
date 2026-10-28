@@ -154,6 +154,7 @@ export interface Store {
   };
   roles: {
     listByEvent(eventId: string): Promise<RoleRow[]>;
+    listByEvents(eventIds: string[]): Promise<RoleRow[]>; // all of these events' roles in one query, ordered by id
     get(id: string): Promise<RoleRow | null>;
     create(input: NewRole): Promise<RoleRow>;
   };
