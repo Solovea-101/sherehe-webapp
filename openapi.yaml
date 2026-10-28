@@ -37,14 +37,25 @@ paths:
           required: false
           description: One of Kenya's 47 counties; matching ignores case.
           schema: { type: string, example: Nairobi }
+        - name: include
+          in: query
+          required: false
+          description: >
+            `roles` adds each event's staffing roles, in a `roles` array, to the same list. One call then
+            replaces this call plus one `GET /api/events/{eventId}/roles` per event. Without it the answer is
+            exactly as before. Any other value is a 400.
+          schema: { type: string, enum: [roles] }
       responses:
         '200':
-          description: Matching events; an empty array when nothing matches
+          description: Matching events; an empty array when nothing matches. With include=roles every event also has its roles.
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: '#/components/schemas/Event' }
+                anyOf:
+                  - type: array
+                    items: { $ref: '#/components/schemas/Event' }
+                  - type: array
+                    items: { $ref: '#/components/schemas/EventWithRoles' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -524,6 +535,29 @@ components:
           enum: [upcoming, completed, cancelled]
           description: Only upcoming events accept offers.
           example: upcoming
+
+    EventWithRoles:
+      description: An event with its staffing roles, as returned by GET /api/events?include=roles. Every field of Event, plus roles.
+      type: object
+      required: [id, name, type, county, area, venue, startsAt, endsAt, expectedGuests, status, roles]
+      properties:
+        id: { type: string, example: evt_2001 }
+        name: { type: string, example: 'Wanjiku and Otieno wedding' }
+        type: { type: string, enum: [wedding, conference, concert, corporate, other], example: wedding }
+        county: { type: string, example: Nairobi }
+        area: { type: string, example: Westlands }
+        venue: { type: string, example: 'Sarit Expo Centre' }
+        startsAt: { type: string, format: date-time, example: '2026-12-05T14:00:00Z' }
+        endsAt: { type: string, format: date-time, example: '2026-12-05T22:00:00Z' }
+        expectedGuests: { type: integer, minimum: 1, example: 300 }
+        status:
+          type: string
+          enum: [upcoming, completed, cancelled]
+          description: Only upcoming events accept offers.
+          example: upcoming
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/Role' }
 
     Role:
       type: object

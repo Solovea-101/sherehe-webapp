@@ -4,7 +4,7 @@ import type { ApiEvent } from '@/lib/mappers';
 import { useTestServer } from './helpers/server';
 import { newOrganiser } from './helpers/auth';
 import { inDays } from './helpers/dates';
-import { EVENT_KEYS, ISO_DATE, keysOf } from './helpers/shapes';
+import { EVENT_KEYS, ISO_DATE, ROLE_KEYS, keysOf } from './helpers/shapes';
 
 const app = useTestServer();
 
@@ -271,5 +271,69 @@ describe('POST /api/events (O2)', () => {
   it('checks the login before reading the body', async () => {
     const res = await request(app()).post('/api/events').set('Content-Type', 'application/json').send('{"name":');
     expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /api/events?status=upcoming&include=roles (K1 and K2 in one call)', () => {
+  it('returns the same events as without it, each with its roles', async () => {
+    const plain = await request(app()).get('/api/events?status=upcoming');
+    const bulk = await request(app()).get('/api/events?status=upcoming&include=roles');
+    expect(bulk.status).toBe(200);
+    expect(bulk.body.map((e: { id: string }) => e.id)).toEqual(plain.body.map((e: { id: string }) => e.id));
+    for (const event of bulk.body) {
+      expect(keysOf(event)).toEqual([...EVENT_KEYS, 'roles'].sort());
+      expect(Array.isArray(event.roles)).toBe(true);
+    }
+  });
+
+  it('gives each event exactly what its own roles endpoint gives', async () => {
+    const bulk = await request(app()).get('/api/events?status=upcoming&include=roles');
+    for (const event of bulk.body) {
+      const own = await request(app()).get(`/api/events/${event.id}/roles`);
+      expect(event.roles).toEqual(own.body);
+      for (const role of event.roles) expect(keysOf(role)).toEqual(ROLE_KEYS);
+    }
+    expect(bulk.body.some((e: { roles: unknown[] }) => e.roles.length > 0)).toBe(true);
+  });
+
+  it('keeps the county filter, and an event with no roles has []', async () => {
+    const organiser = await newOrganiser(app());
+    const event = await request(app()).post('/api/events').set(organiser.auth).send({
+      name: 'No roles yet', type: 'other', county: 'Lamu', area: 'Shela', venue: 'Beach hall', startsAt: inDays(80), endsAt: inDays(80, 20), expectedGuests: 20,
+    });
+    const res = await request(app()).get('/api/events?status=upcoming&county=lamu&include=roles');
+    expect(res.status).toBe(200);
+    expect(res.body.every((e: { county: string }) => e.county === 'Lamu')).toBe(true);
+    expect(res.body.find((e: { id: string }) => e.id === event.body.id)?.roles).toEqual([]);
+  });
+
+  it('leaves the plain answer alone: no roles key without include, and a blank include means the same', async () => {
+    const plain = await request(app()).get('/api/events?status=upcoming');
+    expect(plain.body.every((e: object) => !('roles' in e))).toBe(true);
+    const blank = await request(app()).get('/api/events?status=upcoming&include=');
+    expect(blank.body).toEqual(plain.body);
+  });
+
+  it.each([
+    ['an unknown value', 'include=offers', 'include can only be roles'],
+    ['a different case', 'include=Roles', 'include can only be roles'],
+    ['given twice', 'include=roles&include=roles', 'include can be given only once'],
+  ])('answers 400 { message } for include %s', async (_label, query, message) => {
+    const res = await request(app()).get(`/api/events?status=upcoming&${query}`);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ message });
+  });
+
+  it('is reachable by a logged-in organiser, and still needs a key or login', async () => {
+    const organiser = await newOrganiser(app());
+    expect((await request(app()).get('/api/events?status=upcoming&include=roles').set(organiser.auth)).status).toBe(200);
+  });
+
+  it('sends the roles of every event in two queries, however many events there are', async () => {
+    const store = await getStore();
+    const spy = jest.spyOn(store.roles, 'listByEvent');
+    await request(app()).get('/api/events?status=upcoming&include=roles');
+    expect(spy).not.toHaveBeenCalled(); // one bulk query, not one per event
+    spy.mockRestore();
   });
 });

@@ -45,6 +45,14 @@ There are two kinds of caller, and each endpoint says which it accepts (the full
 | `PATCH /api/offers/{offerId}`, everything under `/api/events/{eventId}/offers`, `/api/me`, `/api/training-options`, `/api/crew-trainings`, `/api/certificate-checks`, `POST /api/events`, `POST /api/events/{eventId}/roles` | a logged-in organiser (and, where it matters, the organiser of that event) |
 | `POST /api/auth/register`, `POST /api/auth/login` | anyone |
 
+### Events with their roles in one call
+
+`GET /api/events?status=upcoming&include=roles` returns the same list as `GET /api/events?status=upcoming`, with each event also carrying its staffing `roles` (an empty array when it has none). One call then replaces the list plus one `GET /api/events/{eventId}/roles` per event, so a system that refreshes every upcoming event costs a constant two database queries instead of one per event. `county` works as before; any `include` other than `roles` is a `400`. Without `include` the answer is exactly what it always was.
+
+```bash
+curl -s -H "X-API-Key: <your-api-key>" "http://localhost:3000/api/events?status=upcoming&county=Nairobi&include=roles"
+```
+
 ### Rate limit
 
 Each partner (counted by its key's name) may make **300 requests a minute**. Everything else (the website, a missing or wrong key) is counted per address at **100 a minute**, and sign-up and login are limited to **10 a minute** per address, because that is where passwords get guessed. The count restarts after a minute. Over the limit you get `429`, the request is **not** carried out, and the answer says how long to wait:

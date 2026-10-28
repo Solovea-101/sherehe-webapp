@@ -127,6 +127,13 @@ export function createMemoryStore(seed: SeedData = seedData): Store {
           .sort((a, b) => a.id.localeCompare(b.id))
           .map(copy);
       },
+      async listByEvents(eventIds) {
+        const wanted = new Set(eventIds);
+        return [...roles.values()]
+          .filter((r) => wanted.has(r.event_id))
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .map(copy);
+      },
       async get(id) {
         const row = roles.get(id);
         return row ? copy(row) : null;

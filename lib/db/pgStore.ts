@@ -116,6 +116,7 @@ export function createPgStore(pool: Pool): Store {
 
     roles: {
       listByEvent: (eventId) => many<RoleRow>(`SELECT * FROM roles WHERE event_id = $1 ORDER BY ${idNumber()}`, [eventId]),
+      listByEvents: (eventIds) => (eventIds.length === 0 ? Promise.resolve([]) : many<RoleRow>(`SELECT * FROM roles WHERE event_id = ANY($1::text[]) ORDER BY ${idNumber()}`, [eventIds])),
       get: (id) => one<RoleRow>('SELECT * FROM roles WHERE id = $1', [id]),
       async create(input) {
         const row = await guarded(

@@ -7,6 +7,7 @@ import type { CertificateCheckRow, CrewTrainingRow, CrewTrainingStatus, EventRow
 // added to openapi.yaml but missing here fails `npm run typecheck`.
 type Schemas = components['schemas'];
 export type ApiEvent = Schemas['Event'];
+export type ApiEventWithRoles = Schemas['EventWithRoles'];
 export type ApiRole = Schemas['Role'];
 export type ApiOffer = Schemas['Offer'];
 export type ApiUser = Schemas['User'];
@@ -33,6 +34,11 @@ export function toEvent(row: EventRow): ApiEvent {
     expectedGuests: row.expected_guests,
     status: row.status,
   };
+}
+
+/** An event together with its roles, for GET /api/events?include=roles. */
+export function toEventWithRoles(row: EventRow, roleRows: RoleRow[]): ApiEventWithRoles {
+  return { ...toEvent(row), roles: roleRows.map(toRole) };
 }
 
 export function toRole(row: RoleRow): ApiRole {

@@ -90,6 +90,14 @@ export function storeContract(label: string, make: (seed?: SeedData) => Promise<
       expect(await store.roles.listByEvent('evt_9999')).toEqual([]);
     });
 
+    it('lists the roles of several events in one go, ordered by id; nothing for none or unknown', async () => {
+      const both = await store.roles.listByEvents(['evt_2006', 'evt_2001']);
+      expect(both.map((r) => r.id)).toEqual(['rol_3001', 'rol_3002', ...(await store.roles.listByEvent('evt_2006')).map((r) => r.id)].sort());
+      expect(both.every((r) => ['evt_2001', 'evt_2006'].includes(r.event_id))).toBe(true);
+      expect(await store.roles.listByEvents([])).toEqual([]);
+      expect(await store.roles.listByEvents(['evt_9999'])).toEqual([]);
+    });
+
     it('creates a role with the next id and refuses an unknown event', async () => {
       const role = await store.roles.create({
         event_id: 'evt_2006', title: 'Bartenders', category: 'catering', headcount: 2, filled: 0,

@@ -22,6 +22,8 @@ export interface paths {
                     status: "upcoming";
                     /** @description One of Kenya's 47 counties; matching ignores case. */
                     county?: string;
+                    /** @description `roles` adds each event's staffing roles, in a `roles` array, to the same list. One call then replaces this call plus one `GET /api/events/{eventId}/roles` per event. Without it the answer is exactly as before. Any other value is a 400. */
+                    include?: "roles";
                 };
                 header?: never;
                 path?: never;
@@ -29,13 +31,13 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Matching events; an empty array when nothing matches */
+                /** @description Matching events; an empty array when nothing matches. With include=roles every event also has its roles. */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Event"][];
+                        "application/json": components["schemas"]["Event"][] | components["schemas"]["EventWithRoles"][];
                     };
                 };
                 400: components["responses"]["BadRequest"];
@@ -854,6 +856,43 @@ export interface components {
              * @enum {string}
              */
             status: "upcoming" | "completed" | "cancelled";
+        };
+        /** @description An event with its staffing roles, as returned by GET /api/events?include=roles. Every field of Event, plus roles. */
+        EventWithRoles: {
+            /** @example evt_2001 */
+            id: string;
+            /** @example Wanjiku and Otieno wedding */
+            name: string;
+            /**
+             * @example wedding
+             * @enum {string}
+             */
+            type: "wedding" | "conference" | "concert" | "corporate" | "other";
+            /** @example Nairobi */
+            county: string;
+            /** @example Westlands */
+            area: string;
+            /** @example Sarit Expo Centre */
+            venue: string;
+            /**
+             * Format: date-time
+             * @example 2026-12-05T14:00:00Z
+             */
+            startsAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-12-05T22:00:00Z
+             */
+            endsAt: string;
+            /** @example 300 */
+            expectedGuests: number;
+            /**
+             * @description Only upcoming events accept offers.
+             * @example upcoming
+             * @enum {string}
+             */
+            status: "upcoming" | "completed" | "cancelled";
+            roles: components["schemas"]["Role"][];
         };
         Role: {
             /** @example rol_3001 */
