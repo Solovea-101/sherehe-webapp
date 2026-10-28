@@ -443,7 +443,7 @@ Each step prints `PASS` or `FAIL`. A step that fails only because another system
 | `UJUZI_API_URL`, `UJUZI_API_KEY` | Our upstream, and our key at Ujuzi |
 | `UJUZI_TIMEOUT_MS`, `BOOKING_POLL_MS` | Optional tuning of the Ujuzi timeouts and the booking check (default every five minutes) |
 | `SHEREHE_URL`, `SHEREHE_PARTNER_KEY`, `SHEREHE_CHECK_EMAIL`, `SHEREHE_CHECK_PASSWORD` | Only for `npm run ring:check` |
-| `KAZI_URL`, `UJUZI_URL`, `KAZI_EMPLOYER_EMAIL`, `KAZI_EMPLOYER_PASSWORD`, `UJUZI_STAFF_EMAIL`, `UJUZI_STAFF_PASSWORD` | Only for `npm run ring:e2e`; the defaults are the local ring's ports and demo accounts |
+| `KAZI_URL`, `KAZI_API_KEY`, `UJUZI_URL`, `KAZI_EMPLOYER_EMAIL`, `KAZI_EMPLOYER_PASSWORD`, `UJUZI_STAFF_EMAIL`, `UJUZI_STAFF_PASSWORD` | Only for `npm run ring:e2e`; the defaults are the local ring's ports and demo accounts |
 | `RATE_LIMIT_PARTNER_MAX`, `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_LOGIN_MAX` | Requests per window for each partner (default 300), for everyone else per address (default 100), the window (default 60000 ms), and sign-ups plus logins per address (default 10). `RATE_LIMIT_MAX=0` turns the whole limit off |
 | `TRUST_PROXY` | `true` on Render: the caller's address is the last entry of `X-Forwarded-For`, not the proxy's socket |
 | `SESSION_SECRET` | Reserved. Logins are random tokens whose hashes are stored, so nothing reads it yet |
