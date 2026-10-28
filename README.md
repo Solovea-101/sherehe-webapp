@@ -445,10 +445,38 @@ Each step prints `PASS` or `FAIL`. A step that fails only because another system
 | `SHEREHE_URL`, `SHEREHE_PARTNER_KEY`, `SHEREHE_CHECK_EMAIL`, `SHEREHE_CHECK_PASSWORD` | Only for `npm run ring:check` |
 | `KAZI_URL`, `KAZI_API_KEY`, `UJUZI_URL`, `KAZI_EMPLOYER_EMAIL`, `KAZI_EMPLOYER_PASSWORD`, `UJUZI_STAFF_EMAIL`, `UJUZI_STAFF_PASSWORD` | Only for `npm run ring:e2e`; the defaults are the local ring's ports and demo accounts |
 | `RATE_LIMIT_PARTNER_MAX`, `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_LOGIN_MAX` | Requests per window for each partner (default 300), for everyone else per address (default 100), the window (default 60000 ms), and sign-ups plus logins per address (default 10). `RATE_LIMIT_MAX=0` turns the whole limit off |
-| `TRUST_PROXY` | `true` on Render: the caller's address is the last entry of `X-Forwarded-For`, not the proxy's socket |
+| `TRUST_PROXY` | `true` on Render (`render.yaml` sets it): the caller's address is the last entry of `X-Forwarded-For`, not the proxy's socket |
 | `SESSION_SECRET` | Reserved. Logins are random tokens whose hashes are stored, so nothing reads it yet |
 
 See `.env.example`. Real values live in Render's settings, never in git.
+
+## Run on Render
+
+`render.yaml` describes the deployment: a web service `sherehe` and a PostgreSQL database `sherehe-db`, both on Render's free plan in Frankfurt. Sherehe is deployed from the `main` branch.
+
+**One-time setup (in Render's dashboard)**
+
+1. **New, Blueprint**, connect this GitHub repository, branch `main`. Render reads `render.yaml` and creates both.
+2. Make Kazi Connect's key on your own computer: `npm run partner:key -- --name kazi`. It prints a raw key once and a `kazi:<hash>` line. Give Render only the `kazi:<hash>` line, as `PARTNER_KEYS`. Send the raw key to Kazi Connect privately (never in git or a shared channel). Make a fresh key for Render; do not reuse one from the local ring.
+3. Leave `UJUZI_API_URL` and `UJUZI_API_KEY` empty until Ujuzi is live. Until then the pages that need Ujuzi (training options, crew trainings, certificate checks) answer Sherehe's own `502`, and everything else works.
+4. Deploy. The log should show `Partner keys loaded: 1 (kazi)`, `Database migrated: ...`, `Database ready (PostgreSQL)` and `Booking poller not started: UJUZI_API_URL is not set`.
+5. In Kazi Connect's own settings set `SHEREHE_API_URL` to this service's URL and `SHEREHE_API_KEY` to the raw key, then redeploy Kazi.
+6. When Ujuzi is live and has issued Sherehe a key (named `sherehe` in Ujuzi's `PARTNER_KEYS`), set `UJUZI_API_URL` and `UJUZI_API_KEY` here and redeploy. The booking check then starts.
+
+The build command is `npm ci --include=dev && npm run build`: Render sets `NODE_ENV=production`, which would otherwise skip the packages the build and `npm start` need.
+
+**Checks against the live service** (replace `<sherehe>` with the service name)
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://<sherehe>.onrender.com/                                    # 200 (the first call after idle can take a minute)
+curl -s -o /dev/null -w "%{http_code}\n" "https://<sherehe>.onrender.com/api/events?status=upcoming"        # 401: no key
+curl -s -H "X-API-Key: <your-api-key>" "https://<sherehe>.onrender.com/api/events?status=upcoming&include=roles" | head -c 300
+SHEREHE_URL=https://<sherehe>.onrender.com SHEREHE_PARTNER_KEY=<your-api-key> npm run ring:check            # reads only
+```
+
+Then, with Kazi live, `SHEREHE_URL=... KAZI_URL=... KAZI_API_KEY=... npm run ring:e2e -- --only=kazi`, and with Ujuzi live `npm run ring:e2e` and `npm run test:partner` (see `partner-tests/README.md`).
+
+**What to expect on the free plan.** The web service sleeps after 15 minutes without a request, so the first call after a quiet spell is slow; Sherehe's rate-limit counts start again and its booking check pauses while it sleeps. The free database is deleted after 30 days. Once Render watches `main`, every merge to `main` redeploys, so work on branches and merge when you want a deploy.
 
 ## More documents
 

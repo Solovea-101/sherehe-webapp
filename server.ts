@@ -4,6 +4,7 @@ import { loadEnvConfig } from '@next/env';
 import next from 'next';
 import { WebSocketServer } from 'ws';
 import { describePartnerKeys } from '@/lib/auth/partnerKeyConfig';
+import { getStore } from '@/lib/db';
 import { startBookingPoller } from '@/lib/jobs/bookingPoller';
 
 // The one path where our own WebSocket upgrades are accepted. Next.js keeps /_next/* (dev hot reload).
@@ -84,6 +85,12 @@ if (path.basename(process.argv[1] ?? '') === 'server.ts') {
   });
   const partnerKeys = describePartnerKeys(); // a count and names, never a key
   console[partnerKeys.level](partnerKeys.text);
+  // Open the database now, not on the first request: tables are made and sample data loaded while a
+  // deploy is still starting, and a database that cannot be reached shows in the log straight away.
+  void getStore().then(
+    () => console.log(`Database ready (${process.env.DATABASE_URL ? 'PostgreSQL' : 'in memory'})`),
+    (err: unknown) => console.error('Database not ready; it will be tried again on the next request:', err instanceof Error ? err.message : err),
+  );
   const stopPoller = startBookingPoller();
 
   // Render sends SIGTERM when it replaces an instance; finish in-flight requests, then leave.
