@@ -85,6 +85,16 @@ Agreed between Sherehe's agent, Kazi Connect's agent and Ujuzi's agent on 2026-1
 - **Not changed, on purpose:** sign-up still says an account exists (409); certificate checks show the holder name exactly as Ujuzi sends it (first name and an initial). See SECURITY_AUDIT.md.
 - **Flagged to Kazi Connect:** the three questions were put to its agent on 2026-10-27 and answered the same day (key-only offers, owner by name, fail closed). Telling its sub-team before deployment (R8) is still the humans' job.
 
+## Ujuzi's contract moved to 0.4.0 (2026-10-28)
+
+Same kind of change as the entry below: Sherehe's own `openapi.yaml` and its version are unchanged.
+
+- **What changed:** `partner-tests/ujuzi_openapi.yaml` went from Ujuzi's 0.2.0 to its 0.4.0, copied from the file in Ujuzi's repository, which is byte for byte what Ujuzi serves at `/openapi.yaml`. `types/ujuzi.d.ts` was regenerated; `types/api.d.ts` was regenerated too and now includes the 404 wording added to the offer endpoints in the previous phase.
+- **Approved by:** the team member driving the Sherehe session, who asked for the open points to be completed on 2026-10-28. Ujuzi's agent had announced the changes on 2026-10-27 and 2026-10-28.
+- **Differences, read from the two files:** 429 (`TooManyRequests`, with `Retry-After`) on every operation, with the limits in the description (100 a minute per partner key, 120 per address for others, 10 sign-in attempts, and a 15-minute lock after five wrong passwords); bookings belong to the partner whose key made them, and another key gets 404; a note that a URL that does not accept the method answers 405 and broken percent-encoding answers 400; and one new website operation, `POST /api/auth/password` (Endpoint 25), which Sherehe does not use. The paths and shapes Sherehe calls (courses, certificates, bookings) are unchanged.
+- **What Sherehe does about it:** nothing new in the client. A 429 from Ujuzi was already handled in the previous phase: a person's action answers our own 502, and the booking check waits for Ujuzi's `Retry-After`. Sherehe's key is named `sherehe` in Ujuzi's settings, so its bookings stay visible to it.
+- **What was checked:** typecheck; the Ujuzi partner suite with writes against the local Ujuzi (33 passed, 1 todo); the full suite and `npm run verify` (see the commit). Not checked: Ujuzi's rule that another key's booking is 404, because Sherehe has only one key at Ujuzi.
+
 ## Ujuzi's contract adopted (2026-10-27)
 
 This is a change to the contract Sherehe consumes, not to ours. `info.version` of Sherehe's own `openapi.yaml` is unchanged (0.1.0).
