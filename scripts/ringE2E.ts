@@ -21,6 +21,7 @@
  *
  * Settings (environment; the defaults are the ring's ports from /Users/solovea/Developer/ring-local):
  *   SHEREHE_URL (4001), KAZI_URL (4002), UJUZI_URL (4003)
+ *   KAZI_API_KEY                                     the key Kazi asks of its callers (when it requires one)
  *   KAZI_EMPLOYER_EMAIL / KAZI_EMPLOYER_PASSWORD     the seeded demo employer on Kazi
  *   UJUZI_STAFF_EMAIL / UJUZI_STAFF_PASSWORD         seeded staff of the centre that runs crs_501 (default password: the local demo one)
  *   --only=kazi | --only=ujuzi                       run one half
@@ -41,6 +42,8 @@ export interface E2EConfig {
   ujuziUrl: string;
   employerEmail: string;
   employerPassword: string;
+  /** Sent as X-API-Key on every call to Kazi, which asks its callers for one when REQUIRE_API_KEY is on. */
+  kaziApiKey?: string;
   staffEmail: string;
   staffPassword: string;
   only?: 'kazi' | 'ujuzi';
@@ -69,8 +72,9 @@ const EVENT_IN_DAYS = 30;
 
 class NotAnswering extends Error {}
 
-async function call(base: string, method: string, path: string, opts: { token?: string; body?: unknown } = {}): Promise<Reply> {
+async function call(base: string, method: string, path: string, opts: { token?: string; body?: unknown; apiKey?: string } = {}): Promise<Reply> {
   const headers: { [name: string]: string } = { Accept: 'application/json' };
+  if (opts.apiKey) headers['X-API-Key'] = opts.apiKey;
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
   let res: Response;
@@ -116,6 +120,7 @@ async function waitFor<T>(timeoutMs: number, everyMs: number, check: () => Promi
 
 export async function runRingE2E(cfg: E2EConfig): Promise<Step[]> {
   const steps: Step[] = [];
+  const kaziCall = (method: string, path: string, opts: { token?: string; body?: unknown } = {}) => call(cfg.kaziUrl, method, path, { ...opts, apiKey: cfg.kaziApiKey });
   const pass = (title: string, detail: string) => steps.push({ title, ok: true, detail });
   const fail = (title: string, detail: string, waiting?: string) => steps.push({ title, ok: false, detail, waiting });
   const stamp = Date.now().toString(36);
@@ -180,7 +185,7 @@ export async function runRingE2E(cfg: E2EConfig): Promise<Step[]> {
       else fail(`Sherehe: the organiser adds a ${r.category} role`, message(res));
     }
 
-    const login = await call(cfg.kaziUrl, 'POST', '/api/auth/login', { body: { email: cfg.employerEmail, password: cfg.employerPassword } });
+    const login = await kaziCall('POST', '/api/auth/login', { body: { email: cfg.employerEmail, password: cfg.employerPassword } });
     const kaziToken = isObject(login.body) && typeof login.body.token === 'string' ? login.body.token : undefined;
     if (login.status !== 200 || !kaziToken) {
       fail('Kazi: the demo employer logs in', message(login), 'Kazi must be running with its seeded demo employer');
@@ -192,7 +197,7 @@ export async function runRingE2E(cfg: E2EConfig): Promise<Step[]> {
       const missingFrom = (list: Json[]) => Object.entries(made).filter(([, id]) => !list.some((o) => o.roleId === id)).map(([n]) => n);
       let last: Reply = { status: 0, body: undefined };
       const listed = await waitFor(cfg.kaziWaitMs, cfg.pollEveryMs, async () => {
-        last = await call(cfg.kaziUrl, 'GET', '/api/event-openings?county=Nairobi', { token: kaziToken });
+        last = await kaziCall('GET', '/api/event-openings?county=Nairobi', { token: kaziToken });
         return last.status === 200 && missingFrom(asList(last.body)).length === 0 ? asList(last.body) : last.status === 200 ? undefined : [];
       });
       if (last.status !== 200) {
@@ -207,7 +212,7 @@ export async function runRingE2E(cfg: E2EConfig): Promise<Step[]> {
         );
       }
 
-      const offer = async (roleId: string, workers: number, note: string) => call(cfg.kaziUrl, 'POST', '/api/staffing-offers', { token: kaziToken, body: { roleId, workersOffered: workers, note } });
+      const offer = async (roleId: string, workers: number, note: string) => kaziCall('POST', '/api/staffing-offers', { token: kaziToken, body: { roleId, workersOffered: workers, note } });
       const sherehesOffers = async () => asList((await call(cfg.shereheUrl, 'GET', `/api/events/${eventId}/offers`, { token })).body);
       const idOf = (r: Reply) => (isObject(r.body) ? String(r.body.id ?? '') : '');
 
@@ -232,13 +237,13 @@ export async function runRingE2E(cfg: E2EConfig): Promise<Step[]> {
             // Kazi's poller notices and opens a job.
             const kaziOfferId = idOf(o);
             const accepted = await waitFor(cfg.kaziWaitMs, cfg.pollEveryMs, async () => {
-              const mine = asList((await call(cfg.kaziUrl, 'GET', '/api/me/staffing-offers', { token: kaziToken })).body).find((x) => x.id === kaziOfferId);
+              const mine = asList((await kaziCall('GET', '/api/me/staffing-offers', { token: kaziToken })).body).find((x) => x.id === kaziOfferId);
               return mine && mine.status === 'accepted' ? mine : undefined;
             });
             if (!accepted) fail('Sherehe -> Kazi: Kazi notices the acceptance', `Kazi still shows the offer as not accepted after ${Math.round(cfg.kaziWaitMs / 1000)} s (its OFFER_POLL_MS is probably longer)`);
             else {
               pass('Sherehe -> Kazi: Kazi notices the acceptance', `status accepted${accepted.jobId ? `, jobId ${String(accepted.jobId)}` : ''}`);
-              const jobs = asList((await call(cfg.kaziUrl, 'GET', '/api/jobs?status=active', { token: kaziToken })).body);
+              const jobs = asList((await kaziCall('GET', '/api/jobs?status=active', { token: kaziToken })).body);
               if (accepted.jobId && jobs.some((j) => j.id === accepted.jobId)) pass('Kazi: a job is open for the students', `job ${String(accepted.jobId)} is active`);
               else fail('Kazi: a job is open for the students', accepted.jobId ? `job ${String(accepted.jobId)} is not among ${jobs.length} active job(s)` : 'the accepted offer has no jobId');
             }
@@ -255,7 +260,7 @@ export async function runRingE2E(cfg: E2EConfig): Promise<Step[]> {
           await call(cfg.shereheUrl, 'PATCH', `/api/offers/${onSherehe.id}`, { token, body: { status: 'declined' } });
           const kaziOfferId = idOf(o);
           const declined = await waitFor(cfg.kaziWaitMs, cfg.pollEveryMs, async () => {
-            const mine = asList((await call(cfg.kaziUrl, 'GET', '/api/me/staffing-offers', { token: kaziToken })).body).find((x) => x.id === kaziOfferId);
+            const mine = asList((await kaziCall('GET', '/api/me/staffing-offers', { token: kaziToken })).body).find((x) => x.id === kaziOfferId);
             return mine && mine.status === 'declined' ? mine : undefined;
           });
           if (declined && !declined.jobId) pass('Sherehe -> Kazi: a declined offer shows as declined on Kazi and opens no job', 'declined, no jobId');
@@ -268,7 +273,7 @@ export async function runRingE2E(cfg: E2EConfig): Promise<Step[]> {
         const o = await offer(made.withdrawn, 1, 'To be withdrawn (ring test)');
         if (o.status !== 201) fail('Kazi -> Sherehe: Kazi withdraws a pending offer', `the offer was not made (${message(o)})`);
         else {
-          const del = await call(cfg.kaziUrl, 'DELETE', `/api/staffing-offers/${idOf(o)}`, { token: kaziToken });
+          const del = await kaziCall('DELETE', `/api/staffing-offers/${idOf(o)}`, { token: kaziToken });
           const gone = !(await sherehesOffers()).some((x) => x.roleId === made.withdrawn);
           if ([200, 204].includes(del.status) && gone) pass('Kazi -> Sherehe: Kazi withdraws a pending offer', `${del.status}, and it is gone from Sherehe`);
           else fail('Kazi -> Sherehe: Kazi withdraws a pending offer', `Kazi answered ${del.status}${gone ? '' : '; the offer is still on Sherehe'}`);
@@ -353,6 +358,7 @@ if (/ringE2E\.ts$/.test(process.argv[1] ?? '')) {
     ujuziUrl: (e.UJUZI_URL ?? 'http://localhost:4003').replace(/\/+$/, ''),
     employerEmail: e.KAZI_EMPLOYER_EMAIL ?? 'employer@kaziconnect.demo',
     employerPassword: e.KAZI_EMPLOYER_PASSWORD ?? 'KaziDemo2026',
+    kaziApiKey: e.KAZI_API_KEY || undefined,
     staffEmail: e.UJUZI_STAFF_EMAIL ?? 'wanjiru.njeri@example.com',
     staffPassword: e.UJUZI_STAFF_PASSWORD ?? 'ujuzi-demo-pass',
     only: only === 'kazi' || only === 'ujuzi' ? only : undefined,
