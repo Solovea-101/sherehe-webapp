@@ -22,7 +22,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  process.env.PARTNER_KEYS = sha256Hex(KAZI_KEY); // this deployment has issued Kazi a key
+  process.env.PARTNER_KEYS = `kazi:${sha256Hex(KAZI_KEY)}`; // this deployment has issued Kazi a key
   process.env.UJUZI_API_KEY = UJUZI_KEY;
   ujuzi().requireKey = UJUZI_KEY;
   config = {

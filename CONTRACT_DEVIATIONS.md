@@ -73,6 +73,37 @@ No entry from the team yet. TODO, same rule.
 - **Needs the humans:** issuing Kazi its key, setting `PARTNER_KEYS` and `REQUIRE_PARTNER_KEY=true` in Render, setting `UJUZI_API_KEY` there (once Ujuzi issues one), and telling Kazi's sub-team **before** this is deployed (R8): Kazi must start sending `X-API-Key` on endpoints 1-6.
 - **`npm run ring:check` (R9)** is built. Its report was only ever run against local copies; the real run needs the live URLs and keys. See HELD_ISSUES.md, H2, H3 and H8.
 
+## `include=roles` on the events list (2026-10-28)
+
+Requested by Kazi Connect's agent, who said it will use it (1 call instead of 1+N) and keep the existing calls as a fallback. `openapi.yaml` has not been handed off, so `info.version` stays 0.1.0, but this is the change Kazi must be told about when it is.
+
+- **Endpoint 1, `GET /api/events?status=upcoming[&county=][&include=roles]`.** New optional query parameter `include`; the only value is `roles`. With it every event also has a `roles` array of the same `Role` objects the roles endpoint returns. Without it, or with a blank value, the answer is exactly as before. Any other value, or `include` twice, is a `400`.
+- **Additive:** no existing field, status code or behaviour changed, so a client that does not send `include` is not affected. The 200 response is documented as either shape (`Event[]` or `EventWithRoles[]`); the new schema is `EventWithRoles`.
+- **Cost:** two database queries however many events there are (`roles.listByEvents`).
+- **Checked:** typecheck; tests in `events.test.ts` (same events and the same roles as the separate calls, county filter, empty roles, 400s, no per-event queries); the new store method against the in-memory and a throwaway PostgreSQL store; `npm run verify`. The rate limit is unchanged and still counts each call.
+
+## Partner key names, offer ownership, fail-closed keys (2026-10-28)
+
+Agreed between Sherehe's agent, Kazi Connect's agent and Ujuzi's agent on 2026-10-27, from the Week 9 audit. `openapi.yaml` has still not been handed off, so `info.version` stays 0.1.0; this is the list Kazi must be told when it is.
+
+- **Offers belong to the key that made them (endpoints 5 and 6).** Reading or withdrawing another system's offer now answers `404` with the usual wording, so nothing is given away. Kazi is the only partner and its behaviour is unchanged. Offers are bound to a stable consumer name, not to a key, so rotating Kazi's key does not hide its offers.
+- **`PARTNER_KEYS` is `name:hash`.** The old bare-hash form is refused. Kazi's own settings do not change: it only sends its key.
+- **The partner API fails closed.** With no usable key every call is `401`, in every environment. The earlier open mode and `REQUIRE_PARTNER_KEY` are gone; `ALLOW_OPEN_PARTNER_API=true` exists for the test suite and is ignored in production.
+- **`429` on every operation** (300 requests a minute per partner, 100 per address for everyone else, 10 a minute for sign-up and login; the partner figure was raised from 100 on 2026-10-28 after Kazi's role refresh was limited in the local ring), with `Retry-After` and `{ message, retryAfter }`. Kazi does not read `Retry-After` yet; it treats a 429 as a failed call.
+- **Our own use of Ujuzi's 429:** the booking check waits for Ujuzi's `Retry-After` and resumes; a person's action answers our 502.
+- **Not changed, on purpose:** sign-up still says an account exists (409); certificate checks show the holder name exactly as Ujuzi sends it (first name and an initial). See SECURITY_AUDIT.md.
+- **Flagged to Kazi Connect:** the three questions were put to its agent on 2026-10-27 and answered the same day (key-only offers, owner by name, fail closed). Telling its sub-team before deployment (R8) is still the humans' job.
+
+## Ujuzi's contract moved to 0.4.0 (2026-10-28)
+
+Same kind of change as the entry below: Sherehe's own `openapi.yaml` and its version are unchanged.
+
+- **What changed:** `partner-tests/ujuzi_openapi.yaml` went from Ujuzi's 0.2.0 to its 0.4.0, copied from the file in Ujuzi's repository, which is byte for byte what Ujuzi serves at `/openapi.yaml`. `types/ujuzi.d.ts` was regenerated; `types/api.d.ts` was regenerated too and now includes the 404 wording added to the offer endpoints in the previous phase.
+- **Approved by:** the team member driving the Sherehe session, who asked for the open points to be completed on 2026-10-28. Ujuzi's agent had announced the changes on 2026-10-27 and 2026-10-28.
+- **Differences, read from the two files:** 429 (`TooManyRequests`, with `Retry-After`) on every operation, with the limits in the description (100 a minute per partner key, 120 per address for others, 10 sign-in attempts, and a 15-minute lock after five wrong passwords); bookings belong to the partner whose key made them, and another key gets 404; a note that a URL that does not accept the method answers 405 and broken percent-encoding answers 400; and one new website operation, `POST /api/auth/password` (Endpoint 25), which Sherehe does not use. The paths and shapes Sherehe calls (courses, certificates, bookings) are unchanged.
+- **What Sherehe does about it:** nothing new in the client. A 429 from Ujuzi was already handled in the previous phase: a person's action answers our own 502, and the booking check waits for Ujuzi's `Retry-After`. Sherehe's key is named `sherehe` in Ujuzi's settings, so its bookings stay visible to it.
+- **What was checked:** typecheck; the Ujuzi partner suite with writes against the local Ujuzi (33 passed, 1 todo); the full suite and `npm run verify` (see the commit). Not checked: Ujuzi's rule that another key's booking is 404, because Sherehe has only one key at Ujuzi.
+
 ## Ujuzi's contract adopted (2026-10-27)
 
 This is a change to the contract Sherehe consumes, not to ours. `info.version` of Sherehe's own `openapi.yaml` is unchanged (0.1.0).

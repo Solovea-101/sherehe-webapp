@@ -413,7 +413,7 @@ describe('DELETE /api/crew-trainings/{id} (O4, S5)', () => {
 });
 
 describe('when Ujuzi is down, only the pages that need Ujuzi are affected (R7)', () => {
-  it.each(['down', 'error500', 'slow', 'garbage', 'unauthorized', 'redirect', 'wrongShape'] as const)(
+  it.each(['down', 'error500', 'slow', 'garbage', 'unauthorized', 'redirect', 'wrongShape', 'rateLimited'] as const)(
     'with Ujuzi %s: our own 502 for Ujuzi-backed calls, and everything else works',
     async (mode) => {
       const me = await organiserWithEvent(app());
@@ -458,7 +458,7 @@ describe('when Ujuzi is down, only the pages that need Ujuzi are affected (R7)',
 
       // and nothing about Ujuzi's failure leaked into what we told our clients
       for (const res of await Promise.all(needUjuzi.slice(0, 2))) {
-        expect(JSON.stringify(res.body)).not.toMatch(/ECONN|socket|redirect|<html|internal explosion|127\.0\.0\.1/i);
+        expect(JSON.stringify(res.body)).not.toMatch(/ECONN|socket|redirect|<html|internal explosion|too many|127\.0\.0\.1/i);
       }
       log.mockRestore();
     },

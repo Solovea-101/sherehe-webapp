@@ -36,6 +36,7 @@ export interface paths {
                 };
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["UnauthorizedEither"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         put?: never;
@@ -71,6 +72,7 @@ export interface paths {
                 401: components["responses"]["LoginRequired"];
                 403: components["responses"]["Forbidden"];
                 413: components["responses"]["PayloadTooLarge"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         delete?: never;
@@ -109,6 +111,7 @@ export interface paths {
                 };
                 401: components["responses"]["UnauthorizedEither"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         /**
@@ -144,6 +147,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 413: components["responses"]["PayloadTooLarge"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         post?: never;
@@ -190,6 +194,7 @@ export interface paths {
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["LoginRequired"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["TooManyRequests"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -244,6 +249,7 @@ export interface paths {
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 413: components["responses"]["PayloadTooLarge"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         delete?: never;
@@ -283,6 +289,7 @@ export interface paths {
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["UnauthorizedEither"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         put?: never;
@@ -324,6 +331,7 @@ export interface paths {
                 };
                 401: components["responses"]["LoginRequired"];
                 403: components["responses"]["Forbidden"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         put?: never;
@@ -360,6 +368,7 @@ export interface paths {
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 413: components["responses"]["PayloadTooLarge"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         delete?: never;
@@ -398,6 +407,7 @@ export interface paths {
                 };
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         /**
@@ -433,6 +443,7 @@ export interface paths {
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 413: components["responses"]["PayloadTooLarge"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         post?: never;
@@ -458,6 +469,7 @@ export interface paths {
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         options?: never;
@@ -496,6 +508,7 @@ export interface paths {
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 413: components["responses"]["PayloadTooLarge"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         trace?: never;
@@ -539,6 +552,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 409: components["responses"]["Conflict"];
                 413: components["responses"]["PayloadTooLarge"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         delete?: never;
@@ -582,6 +596,7 @@ export interface paths {
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["InvalidLogin"];
                 413: components["responses"]["PayloadTooLarge"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         delete?: never;
@@ -617,6 +632,53 @@ export interface paths {
                     content?: never;
                 };
                 401: components["responses"]["LoginRequired"];
+                429: components["responses"]["TooManyRequests"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change the logged in user's password (Endpoint 25, G1)
+         * @description Order of checks: login (401), body (400, 413), too many wrong passwords lately (429), the current password (403). Every other login of the user ends at once; the token that made the call keeps working. A wrong current password counts towards the same lock as a wrong sign-in.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasswordChange"];
+                };
+            };
+            responses: {
+                /** @description The password was changed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["LoginRequired"];
+                403: components["responses"]["Forbidden"];
+                413: components["responses"]["PayloadTooLarge"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         delete?: never;
@@ -652,6 +714,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["LoginRequired"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         put?: never;
@@ -700,6 +763,7 @@ export interface paths {
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 413: components["responses"]["PayloadTooLarge"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         delete?: never;
@@ -736,6 +800,7 @@ export interface paths {
                 };
                 401: components["responses"]["LoginRequired"];
                 403: components["responses"]["Forbidden"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         put?: never;
@@ -777,6 +842,7 @@ export interface paths {
                 };
                 401: components["responses"]["LoginRequired"];
                 403: components["responses"]["Forbidden"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         put?: never;
@@ -813,6 +879,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 409: components["responses"]["Conflict"];
                 413: components["responses"]["PayloadTooLarge"];
+                429: components["responses"]["TooManyRequests"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -854,6 +921,7 @@ export interface paths {
                     };
                 };
                 426: components["responses"]["UpgradeRequired"];
+                429: components["responses"]["TooManyRequests"];
             };
         };
         put?: never;
@@ -907,6 +975,7 @@ export interface paths {
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 413: components["responses"]["PayloadTooLarge"];
+                429: components["responses"]["TooManyRequests"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -938,6 +1007,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["TooManyRequests"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -1165,6 +1235,15 @@ export interface components {
             email: string;
             /** @example a long passphrase */
             password: string;
+        };
+        PasswordChange: {
+            /** @example a long passphrase */
+            currentPassword: string;
+            /**
+             * @description Must differ from currentPassword
+             * @example a much better passphrase
+             */
+            newPassword: string;
         };
         AuthResponse: {
             /**
@@ -1399,6 +1478,22 @@ export interface components {
                 /**
                  * @example {
                  *       "message": "Course crs_999 not found"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The caller has used its allowance for this minute (100 requests per partner key, 120 per network address for everyone else, 10 sign-in attempts per address). Nothing was changed; wait Retry-After seconds and try again. On login and the password change the 429 can also mean that the email address is locked after five wrong passwords; Retry-After says how long. */
+        TooManyRequests: {
+            headers: {
+                /** @description Whole seconds until the caller's allowance starts again */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "message": "Too many requests. Try again in 42 seconds."
                  *     }
                  */
                 "application/json": components["schemas"]["Error"];

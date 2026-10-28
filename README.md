@@ -29,10 +29,12 @@ There are two kinds of caller, and each endpoint says which it accepts (the full
 
 **Partner systems (Kazi Connect)** send `X-API-Key: YOUR_KEY` on every partner endpoint.
 
-- Each consuming system gets its own key. Sherehe stores only the key's SHA-256 hash (`PARTNER_KEYS`), never the key, so a leaked setting cannot be used to call us.
-- The team issues a key with `npm run partner:key`: it prints a new key once (give that to the partner over a secure channel) and the hash line to put in Render's settings. Never put a key in git, in `.env` or in a chat.
+- Each consuming system gets its own key and a name (`kazi`). Sherehe stores only the key's SHA-256 hash, as `name:hash` in `PARTNER_KEYS`, never the key, so a leaked setting cannot be used to call us.
+- The team issues a key with `npm run partner:key -- --name kazi`: it prints a new key once (give that to the partner over a secure channel) and the `name:hash` entry to put in Render's settings. Never put a key in git, in `.env` or in a chat.
+- **Offers belong to the system that made them.** Kazi's offers are filed under `kazi`, and another key gets `404` (the same as for an offer that does not exist) when it reads or withdraws one. To rotate a key, list the new key under the same name next to the old one, switch the partner over, then remove the old entry; the offers stay visible throughout.
 - TODO: how a tester gets a demo key.
-- Without a key, or with a wrong one, every partner endpoint answers `401 {"message": "Send your partner key as X-API-Key"}` and changes nothing. Until `PARTNER_KEYS` is set, a copy of the API stays open and warns about it in its log; set `REQUIRE_PARTNER_KEY=true` on a deployment to refuse everyone until a key is configured.
+- Without a key, or with a wrong one, every partner endpoint answers `401 {"message": "Send your partner key as X-API-Key"}` and changes nothing. **The partner API is closed until a key is set up**, in every environment: with no `PARTNER_KEYS` every key-only call is refused, and the start-up log says `Partner keys loaded: 0`. The log line `Partner keys loaded: N (kazi)` shows a count and names, never a key. (The test suite alone can switch this off with `ALLOW_OPEN_PARTNER_API=true`; that is ignored in production.)
+- **Every API endpoint needs a credential, except the ones you need to get one.** System-to-system endpoints take a partner key; the endpoints the website's pages use take the organiser's login token; open are `POST /api/auth/register`, `POST /api/auth/login`, the pages, `/docs` and `/openapi.yaml`. A browser never holds a partner key: the pages call our API, and our server adds keys when it calls another system.
 
 **Organisers (the website)** log in and send `Authorization: Bearer YOUR_TOKEN`. `POST /api/auth/register` or `POST /api/auth/login` returns the token; it works for seven days, or until `POST /api/auth/logout`.
 
@@ -42,6 +44,34 @@ There are two kinds of caller, and each endpoint says which it accepts (the full
 | `POST /api/offers`, `GET /api/offers/{offerId}`, `DELETE /api/offers/{offerId}` | a partner key only |
 | `PATCH /api/offers/{offerId}`, everything under `/api/events/{eventId}/offers`, `/api/me`, `/api/training-options`, `/api/crew-trainings`, `/api/certificate-checks`, `POST /api/events`, `POST /api/events/{eventId}/roles` | a logged-in organiser (and, where it matters, the organiser of that event) |
 | `POST /api/auth/register`, `POST /api/auth/login` | anyone |
+
+### Events with their roles in one call
+
+`GET /api/events?status=upcoming&include=roles` returns the same list as `GET /api/events?status=upcoming`, with each event also carrying its staffing `roles` (an empty array when it has none). One call then replaces the list plus one `GET /api/events/{eventId}/roles` per event, so a system that refreshes every upcoming event costs a constant two database queries instead of one per event. `county` works as before; any `include` other than `roles` is a `400`. Without `include` the answer is exactly what it always was.
+
+```bash
+curl -s -H "X-API-Key: <your-api-key>" "http://localhost:3000/api/events?status=upcoming&county=Nairobi&include=roles"
+```
+
+### Rate limit
+
+Each partner (counted by its key's name) may make **300 requests a minute**. Everything else (the website, a missing or wrong key) is counted per address at **100 a minute**, and sign-up and login are limited to **10 a minute** per address, because that is where passwords get guessed. The count restarts after a minute. Over the limit you get `429`, the request is **not** carried out, and the answer says how long to wait:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 42
+Content-Type: application/json
+
+{ "message": "Too many requests. Wait a little and try again.", "retryAfter": 42 }
+```
+
+A well-behaved client waits `Retry-After` seconds and tries again. Our own booking check does this when Ujuzi answers 429: it pauses for the time Ujuzi asked and carries on, and only a person's own action answers our 502. The partner figure comes from measuring Kazi in the local ring: it refreshes its list of open roles with one call for the events and one for each upcoming event (36 calls with 35 events), re-reads when it misses a role, and polls each pending offer, which passed 100 a minute, got 429 and left Kazi's list stale. 300 leaves room for that; it still grows with the number of upcoming events, so a long-running deployment may need a higher figure or a single call that returns events with their roles. The counts live in the server's memory: they start again when it restarts and are not shared between copies of the server. A real call, with a placeholder key:
+
+```bash
+curl -i -H "X-API-Key: <your-api-key>" "http://localhost:3000/api/events?status=upcoming"
+```
+
+The settings are `RATE_LIMIT_PARTNER_MAX`, `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_LOGIN_MAX` (below); `RATE_LIMIT_MAX=0` switches the limit off, which only the tests do. Behind Render's proxy also set `TRUST_PROXY=true` so callers are told apart by their real address. [SECURITY_AUDIT.md](SECURITY_AUDIT.md) records the review that went with this, and `evidence/week09/rate-limit-demo.txt` shows a real run with the limit lowered to 3.
 
 ## One example per major endpoint
 
@@ -334,6 +364,7 @@ Every failure answers with one field, `message`, in plain English, and nothing i
 | 405 | The method is not allowed here | `DELETE /api/events/evt_2001`. The `Allow` header lists what is |
 | 409 | Not allowed in the current state | The role is full, a second pending offer on a role, withdrawing or re-deciding a decided offer, changing a booking the training centre has already decided |
 | 413 | Body too large | More than 20 KB of JSON |
+| 429 | Too many requests | Over the rate limit. The request was not carried out; wait `Retry-After` seconds (also `retryAfter` in the body) |
 | 500 | Our bug | Never shows internal details; the cause is in the server log |
 | 502 | Ujuzi could not be reached or gave an answer we cannot use | Ujuzi asleep, slow (over 10 s), refusing our key, or down. Only the endpoints that need Ujuzi are affected; try again in a minute |
 
@@ -349,11 +380,11 @@ npm run build
 npm start
 ```
 
-Open http://localhost:3000 for the website, or http://localhost:3000/docs for the docs. With no settings, data is kept in memory and reset to the sample data on every restart, so no database is needed, and the partner endpoints are open (the log warns about it). To try the partner key:
+Open http://localhost:3000 for the website, or http://localhost:3000/docs for the docs. With no settings, data is kept in memory and reset to the sample data on every restart, so no database is needed. The website works, but **the partner endpoints refuse every key until you make one** (the log says `Partner keys loaded: 0`):
 
 ```text
-npm run partner:key                          # prints a new key, and the hash to store
-PARTNER_KEYS=<the hash> npm start            # now partner calls need  X-API-Key: <the key>
+npm run partner:key -- --name kazi           # prints a new key once, and the entry to store
+PARTNER_KEYS=<the entry> npm start           # now partner calls work with  X-API-Key: <the key>
 ```
 
 To try training and certificates without the real Ujuzi, start the local stand-in in a second terminal and point Sherehe at it:
@@ -407,16 +438,46 @@ Each step prints `PASS` or `FAIL`. A step that fails only because another system
 | `PORT` | Port to listen on (default 3000) |
 | `DATABASE_URL` | PostgreSQL. Empty means the in-memory store |
 | `SEED_SAMPLE_DATA` | `false` leaves a new database empty |
-| `PARTNER_KEYS` | SHA-256 hashes of the keys we issued, comma separated. Empty means the partner endpoints are open |
-| `REQUIRE_PARTNER_KEY` | `true` refuses every partner call until a key is configured. Set it on a deployment |
+| `PARTNER_KEYS` | The keys we issued, comma separated, each as `name:SHA-256-hash`. Empty means every partner call is refused |
+| `ALLOW_OPEN_PARTNER_API` | Tests only. `true` lets partner calls through while no key is set. Ignored in production |
 | `UJUZI_API_URL`, `UJUZI_API_KEY` | Our upstream, and our key at Ujuzi |
 | `UJUZI_TIMEOUT_MS`, `BOOKING_POLL_MS` | Optional tuning of the Ujuzi timeouts and the booking check (default every five minutes) |
 | `SHEREHE_URL`, `SHEREHE_PARTNER_KEY`, `SHEREHE_CHECK_EMAIL`, `SHEREHE_CHECK_PASSWORD` | Only for `npm run ring:check` |
-| `KAZI_URL`, `UJUZI_URL`, `KAZI_EMPLOYER_EMAIL`, `KAZI_EMPLOYER_PASSWORD`, `UJUZI_STAFF_EMAIL`, `UJUZI_STAFF_PASSWORD` | Only for `npm run ring:e2e`; the defaults are the local ring's ports and demo accounts |
+| `KAZI_URL`, `KAZI_API_KEY`, `UJUZI_URL`, `KAZI_EMPLOYER_EMAIL`, `KAZI_EMPLOYER_PASSWORD`, `UJUZI_STAFF_EMAIL`, `UJUZI_STAFF_PASSWORD` | Only for `npm run ring:e2e`; the defaults are the local ring's ports and demo accounts |
+| `RATE_LIMIT_PARTNER_MAX`, `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_LOGIN_MAX` | Requests per window for each partner (default 300), for everyone else per address (default 100), the window (default 60000 ms), and sign-ups plus logins per address (default 10). `RATE_LIMIT_MAX=0` turns the whole limit off |
+| `TRUST_PROXY` | `true` on Render (`render.yaml` sets it): the caller's address is the last entry of `X-Forwarded-For`, not the proxy's socket |
 | `SESSION_SECRET` | Reserved. Logins are random tokens whose hashes are stored, so nothing reads it yet |
 
 See `.env.example`. Real values live in Render's settings, never in git.
 
+## Run on Render
+
+`render.yaml` describes the deployment: a web service `sherehe` and a PostgreSQL database `sherehe-db`, both on Render's free plan in Frankfurt. Sherehe is deployed from the `main` branch.
+
+**One-time setup (in Render's dashboard)**
+
+1. **New, Blueprint**, connect this GitHub repository, branch `main`. Render reads `render.yaml` and creates both.
+2. Make Kazi Connect's key on your own computer: `npm run partner:key -- --name kazi`. It prints a raw key once and a `kazi:<hash>` line. Give Render only the `kazi:<hash>` line, as `PARTNER_KEYS`. Send the raw key to Kazi Connect privately (never in git or a shared channel). Make a fresh key for Render; do not reuse one from the local ring.
+3. Leave `UJUZI_API_URL` and `UJUZI_API_KEY` empty until Ujuzi is live. Until then the pages that need Ujuzi (training options, crew trainings, certificate checks) answer Sherehe's own `502`, and everything else works.
+4. Deploy. The log should show `Partner keys loaded: 1 (kazi)`, `Database migrated: ...`, `Database ready (PostgreSQL)` and `Booking poller not started: UJUZI_API_URL is not set`.
+5. In Kazi Connect's own settings set `SHEREHE_API_URL` to this service's URL and `SHEREHE_API_KEY` to the raw key, then redeploy Kazi.
+6. When Ujuzi is live and has issued Sherehe a key (named `sherehe` in Ujuzi's `PARTNER_KEYS`), set `UJUZI_API_URL` and `UJUZI_API_KEY` here and redeploy. The booking check then starts.
+
+The build command is `npm ci --include=dev && npm run build`: Render sets `NODE_ENV=production`, which would otherwise skip the packages the build and `npm start` need.
+
+**Checks against the live service** (replace `<sherehe>` with the service name)
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://<sherehe>.onrender.com/                                    # 200 (the first call after idle can take a minute)
+curl -s -o /dev/null -w "%{http_code}\n" "https://<sherehe>.onrender.com/api/events?status=upcoming"        # 401: no key
+curl -s -H "X-API-Key: <your-api-key>" "https://<sherehe>.onrender.com/api/events?status=upcoming&include=roles" | head -c 300
+SHEREHE_URL=https://<sherehe>.onrender.com SHEREHE_PARTNER_KEY=<your-api-key> npm run ring:check            # reads only
+```
+
+Then, with Kazi live, `SHEREHE_URL=... KAZI_URL=... KAZI_API_KEY=... npm run ring:e2e -- --only=kazi`, and with Ujuzi live `npm run ring:e2e` and `npm run test:partner` (see `partner-tests/README.md`).
+
+**What to expect on the free plan.** The web service sleeps after 15 minutes without a request, so the first call after a quiet spell is slow; Sherehe's rate-limit counts start again and its booking check pauses while it sleeps. The free database is deleted after 30 days. Once Render watches `main`, every merge to `main` redeploys, so work on branches and merge when you want a deploy.
+
 ## More documents
 
-`TEAM_CHARTER.md`, `API_NEEDS.md`, `ENDPOINT_LIST.md`, `openapi.yaml`, `CONTRACT_QUESTIONS.md`, `CONTRACT_DEVIATIONS.md`, `VERIFICATION.md`, `PARTNER_TEST_RESULTS.md`, `BLIND_TEST_REPORT.md`, `HELD_ISSUES.md`.
+`SECURITY_AUDIT.md`, `TEAM_CHARTER.md`, `API_NEEDS.md`, `ENDPOINT_LIST.md`, `openapi.yaml`, `CONTRACT_QUESTIONS.md`, `CONTRACT_DEVIATIONS.md`, `VERIFICATION.md`, `PARTNER_TEST_RESULTS.md`, `BLIND_TEST_REPORT.md`, `HELD_ISSUES.md`.

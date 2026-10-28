@@ -18,6 +18,21 @@ export class PartnerUnavailableError extends Error {
   }
 }
 
+/**
+ * The partner said 429: we are sending too much. It did not carry the request out. Still an
+ * "unavailable" for our own clients (they get our 502), but background work can wait the
+ * `retryAfterSeconds` the partner asked for and carry on.
+ */
+export class PartnerRateLimitedError extends PartnerUnavailableError {
+  constructor(
+    partner: string,
+    public readonly retryAfterSeconds: number,
+  ) {
+    super(partner, `${partner} limited our requests (429); it asked us to wait ${retryAfterSeconds} s`);
+    this.name = 'PartnerRateLimitedError';
+  }
+}
+
 /** The partner understood the request and said no (400, 404 or 409). The caller decides what that means. */
 export class PartnerRejectedError extends Error {
   constructor(
@@ -102,6 +117,12 @@ export async function partnerFetch(req: PartnerRequest): Promise<PartnerResponse
 
   if (res.status >= 300 && res.status < 400) throw unavailable(`answered with a redirect (${res.status}); check its URL setting`);
   if (res.status === 401 || res.status === 403) throw unavailable(`refused our API key (${res.status})`);
+  if (res.status === 429) {
+    // Retry-After is whole seconds. Anything missing or silly becomes a minute; never more than 5.
+    const asked = Number(res.headers.get('retry-after'));
+    const seconds = Number.isFinite(asked) && asked >= 1 ? Math.min(Math.ceil(asked), 300) : 60;
+    throw new PartnerRateLimitedError(req.partner, seconds);
+  }
   if (res.status >= 500) throw unavailable(`failed with status ${res.status}`);
 
   const declared = Number(res.headers.get('content-length'));

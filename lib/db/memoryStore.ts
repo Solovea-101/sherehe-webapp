@@ -10,6 +10,7 @@ import {
   type SessionRow,
   type Store,
   type UserRow,
+  DEFAULT_PARTNER,
 } from './types';
 
 // First number handed out per id prefix. Keep in step with the sequences in migrations/001_init.sql.
@@ -126,6 +127,13 @@ export function createMemoryStore(seed: SeedData = seedData): Store {
           .sort((a, b) => a.id.localeCompare(b.id))
           .map(copy);
       },
+      async listByEvents(eventIds) {
+        const wanted = new Set(eventIds);
+        return [...roles.values()]
+          .filter((r) => wanted.has(r.event_id))
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .map(copy);
+      },
       async get(id) {
         const row = roles.get(id);
         return row ? copy(row) : null;
@@ -146,7 +154,7 @@ export function createMemoryStore(seed: SeedData = seedData): Store {
         if ([...offers.values()].some((o) => o.role_id === input.role_id && o.status === 'pending')) {
           throw new StoreConflictError(`Role ${input.role_id} already has a pending offer`);
         }
-        const row: OfferRow = { ...input, id: nextOfferId(), status: 'pending', created_at: new Date() };
+        const row: OfferRow = { ...input, partner: input.partner ?? DEFAULT_PARTNER, id: nextOfferId(), status: 'pending', created_at: new Date() };
         offers.set(row.id, row);
         return copy(row);
       },

@@ -62,8 +62,12 @@ export interface OfferRow {
   workers_offered: number;
   note: string; // '' when none was sent
   status: OfferStatus;
+  partner: string; // the consumer (PARTNER_KEYS name) that made the offer; no other consumer can see it
   created_at: Date;
 }
+
+/** Who owns offers made before consumers had names. Kazi Connect is Sherehe's only partner. */
+export const DEFAULT_PARTNER = 'kazi';
 
 export interface CrewTrainingRow {
   id: string; // trn_5001
@@ -95,7 +99,8 @@ export type NewUser = Pick<UserRow, 'email' | 'name' | 'password_hash'>;
 export type NewSession = Pick<SessionRow, 'token_hash' | 'user_id' | 'expires_at'>;
 export type NewEvent = Omit<EventRow, 'id' | 'created_at'>;
 export type NewRole = Omit<RoleRow, 'id' | 'created_at'>;
-export type NewOffer = Pick<OfferRow, 'role_id' | 'event_id' | 'workers_offered' | 'note'>;
+// `partner` falls back to DEFAULT_PARTNER; the offers route always sets it from the caller's key.
+export type NewOffer = Pick<OfferRow, 'role_id' | 'event_id' | 'workers_offered' | 'note'> & { partner?: string };
 export type NewCrewTraining = Omit<CrewTrainingRow, 'id' | 'created_at' | 'updated_at'>;
 export type CrewTrainingChanges = Partial<Pick<CrewTrainingRow, 'crew_size' | 'preferred_start' | 'status'>>;
 export type NewCertificateCheck = Omit<CertificateCheckRow, 'id' | 'checked_at'>;
@@ -149,6 +154,7 @@ export interface Store {
   };
   roles: {
     listByEvent(eventId: string): Promise<RoleRow[]>;
+    listByEvents(eventIds: string[]): Promise<RoleRow[]>; // all of these events' roles in one query, ordered by id
     get(id: string): Promise<RoleRow | null>;
     create(input: NewRole): Promise<RoleRow>;
   };

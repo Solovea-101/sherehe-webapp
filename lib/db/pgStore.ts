@@ -11,6 +11,7 @@ import {
   type Store,
   type UserRow,
   type WithdrawResult,
+  DEFAULT_PARTNER,
 } from './types';
 
 // PostgreSQL error codes this file turns into the Store's own errors.
@@ -115,6 +116,7 @@ export function createPgStore(pool: Pool): Store {
 
     roles: {
       listByEvent: (eventId) => many<RoleRow>(`SELECT * FROM roles WHERE event_id = $1 ORDER BY ${idNumber()}`, [eventId]),
+      listByEvents: (eventIds) => (eventIds.length === 0 ? Promise.resolve([]) : many<RoleRow>(`SELECT * FROM roles WHERE event_id = ANY($1::text[]) ORDER BY ${idNumber()}`, [eventIds])),
       get: (id) => one<RoleRow>('SELECT * FROM roles WHERE id = $1', [id]),
       async create(input) {
         const row = await guarded(
@@ -134,8 +136,8 @@ export function createPgStore(pool: Pool): Store {
       async create(input) {
         const row = await guarded(
           one<OfferRow>(
-            `INSERT INTO offers (role_id, event_id, workers_offered, note) VALUES ($1, $2, $3, $4) RETURNING *`,
-            [input.role_id, input.event_id, input.workers_offered, input.note],
+            `INSERT INTO offers (role_id, event_id, workers_offered, note, partner) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+            [input.role_id, input.event_id, input.workers_offered, input.note, input.partner ?? DEFAULT_PARTNER],
           ),
           `Role ${input.role_id} already has a pending offer`,
           `Role ${input.role_id} or event ${input.event_id} does not exist`,

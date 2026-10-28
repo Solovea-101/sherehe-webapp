@@ -22,6 +22,8 @@ export interface paths {
                     status: "upcoming";
                     /** @description One of Kenya's 47 counties; matching ignores case. */
                     county?: string;
+                    /** @description `roles` adds each event's staffing roles, in a `roles` array, to the same list. One call then replaces this call plus one `GET /api/events/{eventId}/roles` per event. Without it the answer is exactly as before. Any other value is a 400. */
+                    include?: "roles";
                 };
                 header?: never;
                 path?: never;
@@ -29,17 +31,18 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Matching events; an empty array when nothing matches */
+                /** @description Matching events; an empty array when nothing matches. With include=roles every event also has its roles. */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Event"][];
+                        "application/json": components["schemas"]["Event"][] | components["schemas"]["EventWithRoles"][];
                     };
                 };
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -70,6 +73,7 @@ export interface paths {
                 };
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
@@ -111,6 +115,7 @@ export interface paths {
                 };
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -154,6 +159,7 @@ export interface paths {
                 };
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -187,6 +193,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
@@ -226,6 +233,7 @@ export interface paths {
                 401: components["responses"]["Unauthorized"];
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -274,6 +282,7 @@ export interface paths {
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
@@ -289,7 +298,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One offer and its status (K4) */
+        /**
+         * One offer and its status (K4)
+         * @description Only the system that made the offer can read it; another key gets the same 404 as for an offer that does not exist.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -312,11 +324,15 @@ export interface paths {
                 };
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
         post?: never;
-        /** Withdraw a pending offer (K5) */
+        /**
+         * Withdraw a pending offer (K5)
+         * @description Only the system that made the offer can withdraw it; another key gets the same 404 as for an offer that does not exist.
+         */
         delete: {
             parameters: {
                 query?: never;
@@ -338,6 +354,7 @@ export interface paths {
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
             };
         };
         options?: never;
@@ -372,6 +389,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
             };
         };
         trace?: never;
@@ -410,6 +428,7 @@ export interface paths {
                 };
                 400: components["responses"]["BadRequest"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
@@ -452,6 +471,7 @@ export interface paths {
                 };
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
@@ -487,6 +507,7 @@ export interface paths {
                     content?: never;
                 };
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
@@ -522,6 +543,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -564,6 +586,7 @@ export interface paths {
                 };
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -602,6 +625,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -635,6 +659,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -675,6 +700,7 @@ export interface paths {
                 401: components["responses"]["Unauthorized"];
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["RateLimited"];
             };
         };
         /**
@@ -710,6 +736,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -737,6 +764,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -780,6 +808,7 @@ export interface paths {
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["RateLimited"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -827,6 +856,43 @@ export interface components {
              * @enum {string}
              */
             status: "upcoming" | "completed" | "cancelled";
+        };
+        /** @description An event with its staffing roles, as returned by GET /api/events?include=roles. Every field of Event, plus roles. */
+        EventWithRoles: {
+            /** @example evt_2001 */
+            id: string;
+            /** @example Wanjiku and Otieno wedding */
+            name: string;
+            /**
+             * @example wedding
+             * @enum {string}
+             */
+            type: "wedding" | "conference" | "concert" | "corporate" | "other";
+            /** @example Nairobi */
+            county: string;
+            /** @example Westlands */
+            area: string;
+            /** @example Sarit Expo Centre */
+            venue: string;
+            /**
+             * Format: date-time
+             * @example 2026-12-05T14:00:00Z
+             */
+            startsAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-12-05T22:00:00Z
+             */
+            endsAt: string;
+            /** @example 300 */
+            expectedGuests: number;
+            /**
+             * @description Only upcoming events accept offers.
+             * @example upcoming
+             * @enum {string}
+             */
+            status: "upcoming" | "completed" | "cancelled";
+            roles: components["schemas"]["Role"][];
         };
         Role: {
             /** @example rol_3001 */
@@ -907,6 +973,15 @@ export interface components {
         Error: {
             /** @example Event evt_9999 not found */
             message: string;
+        };
+        RateLimitError: {
+            /** @example Too many requests. Wait a little and try again. */
+            message: string;
+            /**
+             * @description Seconds to wait; the same number as the Retry-After header
+             * @example 42
+             */
+            retryAfter: number;
         };
         User: {
             /** @example usr_1002 */
@@ -1203,6 +1278,23 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Too many requests from this key or address. The request was not carried out; wait Retry-After seconds, then try again. */
+        RateLimited: {
+            headers: {
+                /** @description Seconds until the allowance starts again */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "message": "Too many requests. Wait a little and try again.",
+                 *       "retryAfter": 42
+                 *     }
+                 */
+                "application/json": components["schemas"]["RateLimitError"];
             };
         };
         /** @description Ujuzi could not be reached or gave an answer we cannot use; nothing was changed here */

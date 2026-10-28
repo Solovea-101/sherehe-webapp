@@ -1,0 +1,19 @@
+# Week 9 demonstration: rate limit lowered to 3 per minute (RATE_LIMIT_MAX=3) on a throwaway local server
+# Note (2026-10-28): the partner limit is now set with RATE_LIMIT_PARTNER_MAX (default 300); this run used the single limit that existed then.
+# Taken 2026-10-27T18:09:18Z. The key below is shown as a placeholder; the real one was a one-off random key.
+
+$ curl -s -o /dev/null -w "%{http_code}" "$URL"                                  # no key
+401
+$ curl -s -o /dev/null -w "%{http_code}" -H "X-API-Key: wrong" "$URL"            # wrong key
+401
+
+# (waited a minute so the two refused calls above no longer count)
+$ for i in 1 2 3 4 5; do curl -s -o /dev/null -w "%{http_code} " -H "X-API-Key: <your-api-key>" "$URL"; done
+200 200 200 429 429 
+
+$ curl -si -H "X-API-Key: <your-api-key>" "$URL"      # the 429 in full (headers and body)
+HTTP/1.1 429 Too Many Requests
+access-control-allow-origin: *
+content-type: application/json
+retry-after: 60
+{"message":"Too many requests. Wait a little and try again.","retryAfter":60}

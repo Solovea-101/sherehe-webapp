@@ -1,8 +1,8 @@
-# Ujuzi API contract 0.2.0: the partner endpoints 1-7 and 24 (Sherehe, needs S1-S5) and the website endpoints 8-23.
+# Ujuzi API contract 0.4.0: the partner endpoints 1-7 and 24 (Sherehe, needs S1-S5) and the website endpoints 8-23 and 25.
 openapi: 3.0.3
 info:
   title: Ujuzi API
-  version: 0.2.0
+  version: 0.4.0
   description: >
     Short courses, certificate checks and group training bookings for Sherehe (needs S1-S5), plus the
     Ujuzi website: accounts, enrolments, live Kazi Connect job matches and applications, and the staff
@@ -12,6 +12,22 @@ info:
     Partner calls send an X-API-Key. Website calls send "Authorization: Bearer YOUR_TOKEN", with the
     token from the register or login call; the course and certificate reads accept either, because a
     browser cannot hold a partner key. Every error is a JSON body with one field, message.
+
+
+    Rate limits, per minute: a partner key may make 100 requests; any other caller (website users,
+    anonymous callers, wrong keys) 120 per network address; and sign-in attempts (login and register) 10
+    per address. Past the limit the answer is 429 with a Retry-After header (seconds) and a message.
+    The limits are per server copy and reset when it restarts. Separately, five wrong passwords in a row for
+    one email address lock that address for 15 minutes: login answers 429 with a Retry-After header, even
+    for the right password, and the lock is kept in the database, so a restart does not clear it.
+
+
+    A booking belongs to the partner whose key created it. Another partner's key gets 404 for it, the
+    same answer as for a booking that does not exist, on read, change and cancel.
+
+
+    A URL that does not accept the method used answers 405 with a message; a URL with broken
+    percent-encoding answers 400.
 servers:
   - url: http://localhost:3000
     description: Local development server
@@ -44,6 +60,7 @@ paths:
                 items: { $ref: '#/components/schemas/Course' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/UnauthorizedEither' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
     post:
       summary: Staff create a course at their own centre (Endpoint 20, G4)
       description: The course belongs to the logged in staff member's centre; the centre cannot be chosen.
@@ -67,6 +84,7 @@ paths:
         '401': { $ref: '#/components/responses/LoginRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/courses/{courseId}:
     get:
@@ -82,6 +100,7 @@ paths:
               schema: { $ref: '#/components/schemas/Course' }
         '401': { $ref: '#/components/responses/UnauthorizedEither' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
     put:
       summary: Staff replace a course's details (Endpoint 21, G4)
       description: Sets every detail of the course to what is sent. Only staff at the course's own centre can do this.
@@ -104,6 +123,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/courses/{courseId}/job-matches:
     get:
@@ -132,6 +152,7 @@ paths:
         '401': { $ref: '#/components/responses/LoginRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
         '502': { $ref: '#/components/responses/BadGateway' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/certificates:
     post:
@@ -162,6 +183,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/certificates/{certificateNo}:
     get:
@@ -181,6 +203,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/UnauthorizedEither' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/bookings:
     get:
@@ -197,6 +220,7 @@ paths:
                 items: { $ref: '#/components/schemas/Booking' }
         '401': { $ref: '#/components/responses/LoginRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
     post:
       summary: Book group training for an event crew (S3)
       description: >
@@ -227,6 +251,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/bookings/{bookingId}:
     get:
@@ -242,6 +267,7 @@ paths:
               schema: { $ref: '#/components/schemas/Booking' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
     put:
       summary: Replace crew size and start date of a pending booking (S5)
       description: >
@@ -267,6 +293,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
     delete:
       summary: Cancel a pending booking (S5)
       security: [{ partnerKey: [] }]
@@ -277,6 +304,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
     patch:
       summary: Staff confirm or decline a booking (Endpoint 24, G5)
       description: >
@@ -302,6 +330,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/auth/register:
     post:
@@ -326,6 +355,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/auth/login:
     post:
@@ -345,6 +375,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/InvalidLogin' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/auth/logout:
     post:
@@ -353,6 +384,28 @@ paths:
       responses:
         '204': { description: Logged out; the token no longer works }
         '401': { $ref: '#/components/responses/LoginRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/auth/password:
+    post:
+      summary: Change the logged in user's password (Endpoint 25, G1)
+      description: >
+        Order of checks: login (401), body (400, 413), too many wrong passwords lately (429), the current
+        password (403). Every other login of the user ends at once; the token that made the call keeps
+        working. A wrong current password counts towards the same lock as a wrong sign-in.
+      security: [{ userToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordChange' }
+      responses:
+        '204': { description: The password was changed }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/LoginRequired' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/me:
     get:
@@ -365,6 +418,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
         '401': { $ref: '#/components/responses/LoginRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/enrolments:
     post:
@@ -387,6 +441,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/me/enrolments:
     get:
@@ -402,6 +457,7 @@ paths:
                 items: { $ref: '#/components/schemas/Enrolment' }
         '401': { $ref: '#/components/responses/LoginRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/me/applications:
     get:
@@ -420,6 +476,7 @@ paths:
                 items: { $ref: '#/components/schemas/Application' }
         '401': { $ref: '#/components/responses/LoginRequired' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
     post:
       summary: Apply for a Kazi job on the graduate's behalf (Endpoint 15, G3)
       description: >
@@ -448,6 +505,7 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
         '502': { $ref: '#/components/responses/BadGateway' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/me/applications/feed:
     get:
@@ -471,6 +529,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/FeedEvent' }
         '426': { $ref: '#/components/responses/UpgradeRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /api/me/applications/{id}:
     put:
@@ -499,6 +558,7 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
         '502': { $ref: '#/components/responses/BadGateway' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
     delete:
       summary: Withdraw a pending application (Endpoint 18, G3)
       description: >
@@ -514,6 +574,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '502': { $ref: '#/components/responses/BadGateway' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
 components:
   securitySchemes:
@@ -521,7 +582,7 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: One key per consuming system, issued by Ujuzi. Only a hash of it is stored.
+      description: One key per consuming system, issued by Ujuzi and sent as the X-API-Key header on every partner call. Only a hash of it is stored.
     userToken:
       type: http
       scheme: bearer
@@ -592,6 +653,20 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { message: 'Course crs_999 not found' }
+    TooManyRequests:
+      description: >
+        The caller has used its allowance for this minute (100 requests per partner key, 120 per network
+        address for everyone else, 10 sign-in attempts per address). Nothing was changed; wait Retry-After
+        seconds and try again. On login and the password change the 429 can also mean that the email
+        address is locked after five wrong passwords; Retry-After says how long.
+      headers:
+        Retry-After:
+          description: Whole seconds until the caller's allowance starts again
+          schema: { type: integer, minimum: 1, example: 42 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { message: 'Too many requests. Try again in 42 seconds.' }
     PayloadTooLarge:
       description: The request body is larger than 20 KB; nothing was changed
       content:
@@ -775,6 +850,19 @@ components:
       properties:
         email: { type: string, format: email, example: achieng.otieno@example.com }
         password: { type: string, example: 'a long passphrase' }
+
+    PasswordChange:
+      type: object
+      additionalProperties: false
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, minLength: 1, maxLength: 128, example: 'a long passphrase' }
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: Must differ from currentPassword
+          example: 'a much better passphrase'
 
     AuthResponse:
       type: object

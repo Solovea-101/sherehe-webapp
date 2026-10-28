@@ -1,7 +1,7 @@
 import { getStore } from '@/lib/db';
 import { createBooking } from '@/lib/clients/ujuziClient';
 import { clearPartnerCache } from '@/lib/clients/fetcher';
-import { pollBookingsOnce, startBookingPoller } from '@/lib/jobs/bookingPoller';
+import { pollBookingsOnce, resetBookingPollerPause, startBookingPoller } from '@/lib/jobs/bookingPoller';
 import { inDays } from './helpers/dates';
 import { startUjuziStub, type UjuziStub } from './helpers/ujuziStub';
 
@@ -13,6 +13,7 @@ afterAll(async () => {
   await stub.close();
 });
 beforeEach(async () => {
+  resetBookingPollerPause();
   // rows left by earlier tests point at bookings the stub has since forgotten; start each test clean
   const store = await getStore();
   for (const leftover of await store.crewTrainings.listPending()) await store.crewTrainings.delete(leftover.id);
@@ -95,6 +96,31 @@ describe('pollBookingsOnce', () => {
     stub.mode = 'ok';
     stub.decide(a.bookingId, 'confirmed');
     expect((await pollBookingsOnce()).updated).toBe(1); // and picks up where it left off
+  });
+
+  it('waits as long as Ujuzi asks after a 429, without counting it as a failure, then carries on', async () => {
+    const { warn } = quiet();
+    const a = await trainingAtUjuzi();
+    await trainingAtUjuzi();
+    stub.mode = 'rateLimited'; // Retry-After: 30
+    const callsBefore = stub.calls.length;
+    const first = await pollBookingsOnce();
+    expect(first).toMatchObject({ skipped: 'Ujuzi rate limit', failed: 0 });
+    expect(stub.calls.length - callsBefore).toBe(1); // it stopped at the first 429
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('asked us to wait 30 s'));
+
+    // while Ujuzi's time is not over, a round does not even call it
+    stub.mode = 'ok';
+    stub.decide(a.bookingId, 'confirmed');
+    const quietRound = await pollBookingsOnce();
+    expect(quietRound.skipped).toBe('Ujuzi rate limit');
+    expect(stub.calls.length - callsBefore).toBe(1);
+
+    // after 30 s the next round asks again and picks the decision up
+    const now = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValue(now + 31_000);
+    expect(await pollBookingsOnce()).toMatchObject({ checked: 2, updated: 1 });
+    expect((await a.store.crewTrainings.get(a.row.id))?.status).toBe('confirmed');
   });
 
   it('never throws, even when the store fails', async () => {

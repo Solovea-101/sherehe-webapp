@@ -40,13 +40,13 @@ function single(params: URLSearchParams, name: string): Parsed<string | undefine
   return { ok: true, value: all[0] };
 }
 
-export type EventsQuery = EventFilter & { status: EventStatus };
+export type EventsQuery = EventFilter & { status: EventStatus; /** include=roles: each event carries its roles */ includeRoles?: true };
 
 /**
  * GET /api/events?status=upcoming&county=. status is required and only "upcoming" is allowed (the
  * contract's enum). county is optional: blank means "every county", anything else must be one of
- * the 47 counties (any letter case) and comes back in its official spelling. Unknown parameters
- * are ignored.
+ * the 47 counties (any letter case) and comes back in its official spelling. include is optional and
+ * can only be "roles" (each event then carries its staffing roles). Other parameters are ignored.
  */
 export function parseEventsQuery(params: URLSearchParams): Parsed<EventsQuery> {
   const status = single(params, 'status');
@@ -58,16 +58,24 @@ export function parseEventsQuery(params: URLSearchParams): Parsed<EventsQuery> {
     return { ok: false, message: 'status must be upcoming; only upcoming events can still be staffed' };
   }
 
+  const includeParam = single(params, 'include');
+  if (!includeParam.ok) return includeParam;
+  const include = includeParam.value?.trim();
+  if (include !== undefined && include !== '' && include !== 'roles') {
+    return { ok: false, message: 'include can only be roles' };
+  }
+  const extra = include === 'roles' ? { includeRoles: true as const } : {};
+
   const countyParam = single(params, 'county');
   if (!countyParam.ok) return countyParam;
   const typed = countyParam.value?.trim();
-  if (typed === undefined || typed === '') return { ok: true, value: { status: 'upcoming' } };
+  if (typed === undefined || typed === '') return { ok: true, value: { status: 'upcoming', ...extra } };
 
   const county = findCounty(typed);
   if (!county) {
     return { ok: false, message: "county must be one of Kenya's 47 counties, for example Nairobi" };
   }
-  return { ok: true, value: { status: 'upcoming', county } };
+  return { ok: true, value: { status: 'upcoming', county, ...extra } };
 }
 
 // ---- request bodies ----------------------------------------------------------------------------
