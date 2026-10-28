@@ -1,0 +1,49 @@
+# Render Blueprint: one web service and one PostgreSQL database, both on the free plan.
+# Render > New > Blueprint > this repository, branch main. Secrets (marked sync: false) are typed into
+# Render's dashboard when the Blueprint is created; they are never kept in git.
+# Steps and checks: README, "Run on Render".
+databases:
+  - name: sherehe-db
+    plan: free
+    region: frankfurt
+    databaseName: sherehe
+    user: sherehe
+
+services:
+  - type: web
+    name: sherehe
+    runtime: node
+    region: frankfurt
+    plan: free
+    branch: main
+    autoDeploy: true
+    # Render sets NODE_ENV=production, which makes a plain `npm install` skip devDependencies. The build
+    # needs typescript, tailwindcss and @tailwindcss/postcss, and `npm start` runs tsx, so they stay.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # The database's internal connection string (same region, no SSL needed).
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sherehe-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      # Behind Render's proxy: tell callers apart by their real address for the rate limit.
+      - key: TRUST_PROXY
+        value: "true"
+      - key: BOOKING_POLL_MS
+        value: "300000"
+      # name:SHA-256-hash of each key we issue, e.g. kazi:<hash> (npm run partner:key -- --name kazi).
+      # With nothing here every partner call is refused (401).
+      - key: PARTNER_KEYS
+        sync: false
+      # Ujuzi's live URL and the key Ujuzi issued to Sherehe. Leave empty until Ujuzi is live: the
+      # Ujuzi-backed endpoints then answer our own 502 and every other page works.
+      - key: UJUZI_API_URL
+        sync: false
+      - key: UJUZI_API_KEY
+        sync: false

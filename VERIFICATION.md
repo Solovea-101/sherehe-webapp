@@ -6,7 +6,7 @@ The script starts the server with the in-memory store, sends real requests to ev
 
 ## Latest run
 
-Run on 2026-10-28T06:31:57Z against contract version 0.1.0.
+Run on 2026-10-28T06:54:24Z against contract version 0.1.0.
 
 **125 of 125 cases passed.** 0 operation(s) in the contract are not verified yet (listed at the end).
 
