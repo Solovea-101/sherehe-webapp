@@ -12,7 +12,7 @@ info:
     organiser calls send a login token.
 
 
-    Rate limit: 100 requests a minute for each partner key, and 100 a minute for everything else
+    Rate limit: 300 requests a minute for each partner, and 100 a minute for everything else
     from one address (10 a minute for sign-up and login). Over the limit the answer is 429 with a
     Retry-After header (seconds) and the request is not carried out.
 servers:

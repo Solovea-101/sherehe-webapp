@@ -13,9 +13,14 @@ import { findIssuedKey, readPartnerKeyConfig } from '@/lib/auth/partnerKeyConfig
  *  - sign-up and login have a smaller allowance of their own, because they are where passwords are
  *    guessed.
  *
- * Settings: RATE_LIMIT_MAX (default 100 requests), RATE_LIMIT_WINDOW_MS (default 60000),
- * RATE_LIMIT_LOGIN_MAX (default 10). RATE_LIMIT_MAX=0 switches the limiter off (the tests and
- * `npm run verify` send hundreds of requests a second from one address).
+ * Settings: RATE_LIMIT_PARTNER_MAX (default 300 requests for each consumer), RATE_LIMIT_MAX (default
+ * 100 for everyone else, per address), RATE_LIMIT_WINDOW_MS (default 60000), RATE_LIMIT_LOGIN_MAX
+ * (default 10). RATE_LIMIT_MAX=0 switches the whole limiter off (the tests and `npm run verify` send
+ * hundreds of requests a second from one address).
+ *
+ * Why partners get more: Kazi refreshes its list of open roles with one call for the events and one
+ * more for each upcoming event, and re-reads when it misses a role. With 35 upcoming events that
+ * alone passed 100 a minute, Sherehe answered 429, and Kazi's list went stale.
  */
 const HITS = Symbol.for('sherehe.rateLimitHits');
 const SWEEP_AT = 5_000; // forget expired windows once the table is this big
@@ -23,7 +28,7 @@ const SWEEP_AT = 5_000; // forget expired windows once the table is this big
 interface Entry { count: number; resetAt: number }
 type Table = Map<string, Entry>;
 
-export interface RateLimitConfig { max: number; loginMax: number; windowMs: number }
+export interface RateLimitConfig { max: number; partnerMax: number; loginMax: number; windowMs: number }
 export type RateDecision = { limited: false } | { limited: true; retryAfter: number; limit: number };
 
 const whole = (value: string | undefined, fallback: number): number => {
@@ -33,7 +38,12 @@ const whole = (value: string | undefined, fallback: number): number => {
 
 export function readRateLimitConfig(env: { [name: string]: string | undefined } = process.env): RateLimitConfig {
   const windowMs = whole(env.RATE_LIMIT_WINDOW_MS, 60_000);
-  return { max: whole(env.RATE_LIMIT_MAX, 100), loginMax: whole(env.RATE_LIMIT_LOGIN_MAX, 10), windowMs: windowMs === 0 ? 60_000 : windowMs };
+  return {
+    max: whole(env.RATE_LIMIT_MAX, 100),
+    partnerMax: whole(env.RATE_LIMIT_PARTNER_MAX, 300),
+    loginMax: whole(env.RATE_LIMIT_LOGIN_MAX, 10),
+    windowMs: windowMs === 0 ? 60_000 : windowMs,
+  };
 }
 
 // The table lives on globalThis: the proxy and the route handlers are separate bundles in one process.
@@ -90,6 +100,6 @@ export function checkRequest(
   // One allowance per consumer, however many of its keys are live (a rotation has two).
   const key = req.key?.trim();
   const partner = key && key.length <= 200 ? findIssuedKey(key, readPartnerKeyConfig(env).keys) : null;
-  if (partner) return hit(`key:${partner}`, config.max, config.windowMs, now);
+  if (partner) return hit(`key:${partner}`, config.partnerMax, config.windowMs, now);
   return hit(`ip:${ip}`, config.max, config.windowMs, now);
 }
