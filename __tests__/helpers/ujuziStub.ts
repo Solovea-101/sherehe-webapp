@@ -10,7 +10,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-export type StubMode = 'ok' | 'down' | 'slow' | 'error500' | 'unauthorized' | 'garbage' | 'wrongShape' | 'redirect';
+export type StubMode = 'ok' | 'down' | 'slow' | 'error500' | 'unauthorized' | 'garbage' | 'wrongShape' | 'redirect' | 'rateLimited';
 
 export interface StubCall {
   method: string;
@@ -144,6 +144,10 @@ export async function startUjuziStub(opts: { requireKey?: string } = {}): Promis
           return message(res, 500, 'internal explosion');
         case 'unauthorized':
           return message(res, 401, 'Send your partner key as X-API-Key');
+        case 'rateLimited':
+          // Ujuzi 0.3.0 limits each caller; a 429 means the request was not carried out.
+          res.setHeader('Retry-After', '30');
+          return message(res, 429, 'Too many requests. Wait a little and try again.');
         case 'garbage':
           res.setHeader('Content-Type', 'text/html');
           return void res.end('<html><body>Render is waking up...</body></html>');

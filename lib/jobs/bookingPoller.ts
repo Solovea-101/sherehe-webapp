@@ -3,7 +3,7 @@
  * training centre on Ujuzi's side, so every few minutes this asks Ujuzi about each pending one and
  * records the answer. Pages then read our own database and keep working while Ujuzi is down.
  */
-import { PartnerUnavailableError } from '@/lib/clients/fetcher';
+import { PartnerRateLimitedError, PartnerUnavailableError } from '@/lib/clients/fetcher';
 import { getBooking } from '@/lib/clients/ujuziClient';
 import { getStore } from '@/lib/db';
 import { toCrewTrainingStatus } from '@/lib/mappers';
@@ -16,15 +16,23 @@ export interface PollSummary {
   missing: number; // Ujuzi no longer has the booking (left as they are)
   failed: number;
   /** Why the round ended early or did not run, if it did. */
-  skipped?: 'Ujuzi unavailable' | 'already running';
+  skipped?: 'Ujuzi unavailable' | 'Ujuzi rate limit' | 'already running';
 }
 
 let running = false;
+// When Ujuzi says 429 the rounds stay quiet until the time it asked us to wait is over.
+let pausedUntil = 0;
+
+/** Forgets a pause after a 429. Only the tests need this. */
+export function resetBookingPollerPause(): void {
+  pausedUntil = 0;
+}
 
 /** One round: ask Ujuzi about every pending crew training. Never throws. */
 export async function pollBookingsOnce(): Promise<PollSummary> {
   const summary: PollSummary = { checked: 0, updated: 0, missing: 0, failed: 0 };
   if (running) return { ...summary, skipped: 'already running' };
+  if (Date.now() < pausedUntil) return { ...summary, skipped: 'Ujuzi rate limit' };
   running = true;
   try {
     const store = await getStore();
@@ -44,6 +52,14 @@ export async function pollBookingsOnce(): Promise<PollSummary> {
         }
       } catch (err) {
         summary.failed += 1;
+        if (err instanceof PartnerRateLimitedError) {
+          // Not an error and not a failed booking: wait as long as Ujuzi asked, then carry on.
+          pausedUntil = Date.now() + err.retryAfterSeconds * 1000;
+          console.warn(`Booking poller: Ujuzi asked us to wait ${err.retryAfterSeconds} s; pausing`);
+          summary.failed -= 1;
+          summary.skipped = 'Ujuzi rate limit';
+          break;
+        }
         if (err instanceof PartnerUnavailableError) {
           // Ujuzi is down or asleep: asking about every other booking would only wait out the same timeout.
           console.warn(`Booking poller: stopping this round: ${err.message}`);

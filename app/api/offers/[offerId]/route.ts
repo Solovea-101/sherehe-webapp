@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server';
-import { requirePartner } from '@/lib/auth/partnerKey';
+import { requirePartnerKey } from '@/lib/auth/partnerKey';
 import { requireUser } from '@/lib/auth/session';
 import { getStore } from '@/lib/db';
 import { fail, guard, json, methodNotAllowed, noContent, notFound, readJson } from '@/lib/http';
@@ -8,27 +8,30 @@ import { parseOfferDecision } from '@/lib/validation';
 
 type Params = { params: Promise<{ offerId: string }> };
 
-// K4: one offer and its status. Partner key only.
+// K4: one offer and its status. Partner key only, and only the consumer that made the offer (404 otherwise).
 export async function GET(req: NextRequest, { params }: Params) {
   return guard(async () => {
     const { offerId } = await params;
-    const access = await requirePartner(req);
+    const access = await requirePartnerKey(req);
     if (!access.ok) return access.response;
     const store = await getStore();
     const row = await store.offers.get(offerId);
-    if (!row) return notFound('Offer', offerId);
+    // Another consumer's offer answers exactly like one that does not exist.
+    if (!row || row.partner !== access.partner) return notFound('Offer', offerId);
     return json<ApiOffer>(200, toOffer(row));
   });
 }
 
 // K5: Kazi Connect withdraws an offer. Only a pending one can be withdrawn; afterwards it is gone.
-// Partner key only.
+// Partner key only, and only the consumer that made the offer (404 otherwise).
 export async function DELETE(req: NextRequest, { params }: Params) {
   return guard(async () => {
     const { offerId } = await params;
-    const access = await requirePartner(req);
+    const access = await requirePartnerKey(req);
     if (!access.ok) return access.response;
     const store = await getStore();
+    const own = await store.offers.get(offerId);
+    if (!own || own.partner !== access.partner) return notFound('Offer', offerId); // not yours: same as unknown
     const result = await store.offers.withdraw(offerId);
     if (result.kind === 'not_found') return notFound('Offer', offerId);
     if (result.kind === 'not_pending') {

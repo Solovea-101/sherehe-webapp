@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server';
-import { requirePartner } from '@/lib/auth/partnerKey';
+import { requirePartnerKey } from '@/lib/auth/partnerKey';
 import { getStore } from '@/lib/db';
 import { StoreConflictError } from '@/lib/db/types';
 import { fail, guard, json, methodNotAllowed, notFound, readJson } from '@/lib/http';
@@ -14,7 +14,7 @@ import { parseNewOffer } from '@/lib/validation';
 // Needs Kazi's partner key (401 without it), checked before anything else.
 export async function POST(req: NextRequest) {
   return guard(async () => {
-    const access = await requirePartner(req);
+    const access = await requirePartnerKey(req);
     if (!access.ok) return access.response;
     const body = await readJson(req);
     if (!body.ok) return body.response;
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
         event_id: role.event_id,
         workers_offered: input.value.workersOffered,
         note: input.value.note,
+        partner: access.partner,
       });
       return json<ApiOffer>(201, toOffer(row), { Location: `/api/offers/${row.id}` });
     } catch (err) {

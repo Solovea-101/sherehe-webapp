@@ -49,8 +49,8 @@ export async function seedPostgres(pool: Pool, seed: SeedData = seedData): Promi
     }
     for (const o of seed.offers) {
       await client.query(
-        'INSERT INTO offers (id, role_id, event_id, workers_offered, note, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [o.id, o.role_id, o.event_id, o.workers_offered, o.note, o.status, o.created_at],
+        'INSERT INTO offers (id, role_id, event_id, workers_offered, note, status, partner, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [o.id, o.role_id, o.event_id, o.workers_offered, o.note, o.status, o.partner, o.created_at],
       );
     }
     for (const t of seed.crewTrainings ?? []) {

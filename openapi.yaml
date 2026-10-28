@@ -10,11 +10,17 @@ info:
     decision on an offer and the website's own endpoints: accounts, creating events and roles, and
     booking crew training and checking certificates through Ujuzi. Partner calls send an X-API-Key;
     organiser calls send a login token.
+
+
+    Rate limit: 100 requests a minute for each partner key, and 100 a minute for everything else
+    from one address (10 a minute for sign-up and login). Over the limit the answer is 429 with a
+    Retry-After header (seconds) and the request is not carried out.
 servers:
   - url: http://localhost:3000
     description: Local development server
 
 paths:
+
   /api/events:
     get:
       summary: Upcoming events, optionally filtered by county (K1)
@@ -41,6 +47,7 @@ paths:
                 items: { $ref: '#/components/schemas/Event' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
     post:
       summary: Organiser creates an event (website)
       security: [{ organiserToken: [] }]
@@ -61,6 +68,7 @@ paths:
               schema: { $ref: '#/components/schemas/Event' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/events/{eventId}:
     get:
@@ -77,6 +85,7 @@ paths:
               schema: { $ref: '#/components/schemas/Event' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/events/{eventId}/roles:
     get:
@@ -95,6 +104,7 @@ paths:
                 items: { $ref: '#/components/schemas/Role' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
     post:
       summary: Organiser adds a staffing role to their event (website)
       security: [{ organiserToken: [] }]
@@ -116,6 +126,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/events/{eventId}/offers:
     get:
@@ -134,6 +145,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/offers:
     post:
@@ -158,10 +170,12 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/offers/{offerId}:
     get:
       summary: One offer and its status (K4)
+      description: Only the system that made the offer can read it; another key gets the same 404 as for an offer that does not exist.
       security: [{ partnerKey: [] }]
       parameters:
         - $ref: '#/components/parameters/OfferId'
@@ -173,8 +187,10 @@ paths:
               schema: { $ref: '#/components/schemas/Offer' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
     delete:
       summary: Withdraw a pending offer (K5)
+      description: Only the system that made the offer can withdraw it; another key gets the same 404 as for an offer that does not exist.
       security: [{ partnerKey: [] }]
       parameters:
         - $ref: '#/components/parameters/OfferId'
@@ -183,6 +199,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
     patch:
       summary: Organiser accepts or declines an offer (website)
       security: [{ organiserToken: [] }]
@@ -204,6 +221,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/auth/register:
     post:
@@ -222,6 +240,7 @@ paths:
               schema: { $ref: '#/components/schemas/AuthResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/auth/login:
     post:
@@ -240,6 +259,7 @@ paths:
               schema: { $ref: '#/components/schemas/AuthResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/auth/logout:
     post:
@@ -248,6 +268,7 @@ paths:
       responses:
         '204': { description: Logged out }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/me:
     get:
@@ -260,6 +281,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/training-options:
     get:
@@ -289,6 +311,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '502': { $ref: '#/components/responses/BadGateway' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/crew-trainings:
     get:
@@ -303,6 +326,7 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/CrewTraining' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
     post:
       summary: Book crew training for one of the organiser's events at Ujuzi (website, S3)
       security: [{ organiserToken: [] }]
@@ -327,6 +351,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '502': { $ref: '#/components/responses/BadGateway' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/crew-trainings/{trainingId}:
     get:
@@ -343,6 +368,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
     put:
       summary: Replace crew size and start date of a pending crew training (website, S5)
       description: Sets an absolute state; sending the same body twice gives the same result.
@@ -366,6 +392,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '502': { $ref: '#/components/responses/BadGateway' }
+        '429': { $ref: '#/components/responses/RateLimited' }
     delete:
       summary: Cancel a pending crew training (website, S5)
       security: [{ organiserToken: [] }]
@@ -378,6 +405,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '502': { $ref: '#/components/responses/BadGateway' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /api/certificate-checks:
     post:
@@ -398,6 +426,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '502': { $ref: '#/components/responses/BadGateway' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
 components:
   securitySchemes:
@@ -405,7 +434,7 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: One key per consuming system, issued by Sherehe (from Week 9).
+      description: One key per consuming system, issued by Sherehe. A partner endpoint with no valid key answers 401 in every environment.
     organiserToken:
       type: http
       scheme: bearer
@@ -459,6 +488,16 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { message: 'Role rol_3001 is full' }
+    RateLimited:
+      description: Too many requests from this key or address. The request was not carried out; wait Retry-After seconds, then try again.
+      headers:
+        Retry-After:
+          description: Seconds until the allowance starts again
+          schema: { type: integer, minimum: 1, example: 42 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/RateLimitError' }
+          example: { message: 'Too many requests. Wait a little and try again.', retryAfter: 42 }
     BadGateway:
       description: Ujuzi could not be reached or gave an answer we cannot use; nothing was changed here
       content:
@@ -540,6 +579,13 @@ components:
       required: [message]
       properties:
         message: { type: string, example: 'Event evt_9999 not found' }
+
+    RateLimitError:
+      type: object
+      required: [message, retryAfter]
+      properties:
+        message: { type: string, example: 'Too many requests. Wait a little and try again.' }
+        retryAfter: { type: integer, minimum: 1, description: 'Seconds to wait; the same number as the Retry-After header', example: 42 }
 
     User:
       type: object

@@ -258,8 +258,8 @@ async function main(): Promise<number> {
   process.env.DATABASE_URL = ''; // always the in-memory store: this script writes fixtures into it
   // Verify the API as it runs in production: with a partner key issued and enforced. Only the hash is configured.
   const partnerKey = 'shk_verify-run-key-not-a-real-credential';
-  process.env.PARTNER_KEYS = sha256Hex(partnerKey);
-  delete process.env.REQUIRE_PARTNER_KEY;
+  process.env.PARTNER_KEYS = `kazi:${sha256Hex(partnerKey)}`;
+  process.env.RATE_LIMIT_MAX = '0'; // this script sends its 120+ requests in seconds; the limiter has its own tests
 
   const root = process.cwd();
   const contractFile = path.join(root, 'openapi.yaml');

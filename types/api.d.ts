@@ -40,6 +40,7 @@ export interface paths {
                 };
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -70,6 +71,7 @@ export interface paths {
                 };
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
@@ -111,6 +113,7 @@ export interface paths {
                 };
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -154,6 +157,7 @@ export interface paths {
                 };
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -187,6 +191,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
@@ -226,6 +231,7 @@ export interface paths {
                 401: components["responses"]["Unauthorized"];
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -274,6 +280,7 @@ export interface paths {
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
@@ -312,6 +319,7 @@ export interface paths {
                 };
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -338,6 +346,7 @@ export interface paths {
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
             };
         };
         options?: never;
@@ -372,6 +381,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
             };
         };
         trace?: never;
@@ -410,6 +420,7 @@ export interface paths {
                 };
                 400: components["responses"]["BadRequest"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
@@ -452,6 +463,7 @@ export interface paths {
                 };
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
@@ -487,6 +499,7 @@ export interface paths {
                     content?: never;
                 };
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
@@ -522,6 +535,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -564,6 +578,7 @@ export interface paths {
                 };
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -602,6 +617,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         put?: never;
@@ -635,6 +651,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -675,6 +692,7 @@ export interface paths {
                 401: components["responses"]["Unauthorized"];
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["RateLimited"];
             };
         };
         /**
@@ -710,6 +728,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -737,6 +756,7 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
+                429: components["responses"]["RateLimited"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -780,6 +800,7 @@ export interface paths {
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
+                429: components["responses"]["RateLimited"];
                 502: components["responses"]["BadGateway"];
             };
         };
@@ -907,6 +928,15 @@ export interface components {
         Error: {
             /** @example Event evt_9999 not found */
             message: string;
+        };
+        RateLimitError: {
+            /** @example Too many requests. Wait a little and try again. */
+            message: string;
+            /**
+             * @description Seconds to wait; the same number as the Retry-After header
+             * @example 42
+             */
+            retryAfter: number;
         };
         User: {
             /** @example usr_1002 */
@@ -1203,6 +1233,23 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Too many requests from this key or address. The request was not carried out; wait Retry-After seconds, then try again. */
+        RateLimited: {
+            headers: {
+                /** @description Seconds until the allowance starts again */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "message": "Too many requests. Wait a little and try again.",
+                 *       "retryAfter": 42
+                 *     }
+                 */
+                "application/json": components["schemas"]["RateLimitError"];
             };
         };
         /** @description Ujuzi could not be reached or gave an answer we cannot use; nothing was changed here */

@@ -6,7 +6,7 @@ The script starts the server with the in-memory store, sends real requests to ev
 
 ## Latest run
 
-Run on 2026-10-27T17:59:24Z against contract version 0.1.0.
+Run on 2026-10-28T04:29:29Z against contract version 0.1.0.
 
 **123 of 123 cases passed.** 0 operation(s) in the contract are not verified yet (listed at the end).
 
@@ -15,7 +15,7 @@ Run on 2026-10-27T17:59:24Z against contract version 0.1.0.
 | Check | Result |
 |---|---|
 | openapi.yaml is valid OpenAPI 3.0 and every $ref resolves | pass |
-| 102 examples in openapi.yaml match their own schemas | pass |
+| 106 examples in openapi.yaml match their own schemas | pass |
 | 103 reads and rejected writes changed nothing (store compared before and after each) | pass |
 
 ### Requests sent
