@@ -1,15 +1,105 @@
 @import "tailwindcss";
 
-/* Brand colours. Placeholder palette: the team can swap these values without touching components. */
+/*
+ * Sherehe's look: "Swahili marquee and editorial ledger". Warm ivory paper and deep ink, a festive
+ * hibiscus red for action, marigold brass for focus and VIP marks, and monospaced figures for times,
+ * money and certificate numbers. Colours are all here: components use them by name, so a palette
+ * change touches this block only. The three font variables are set in app/layout.tsx.
+ */
 @theme {
-  --color-brand: #c2410c;
-  --color-brand-dark: #9a3412;
-  --color-accent: #eab308;
-  --color-ink: #1c1917;
-  --color-paper: #fafaf9;
+  /* Surfaces */
+  --color-paper: #faf6f0;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f2ece1;
+  --color-surface-warm: #fdf8ee;
+
+  /* Ink */
+  --color-ink: #181512;
+  --color-ink-secondary: #4a433c;
+  --color-ink-muted: #6e655c;
+
+  /* Lines */
+  --color-line: #ddd5c7;
+  --color-line-strong: #181512;
+
+  /* Brand: festive hibiscus */
+  --color-brand: #b8332a;
+  --color-brand-dark: #8f241d;
+  --color-brand-subtle: #fcece9;
+
+  /* Accent: marigold brass (focus rings, VIP marks) */
+  --color-accent: #d97706;
+  --color-accent-subtle: #fef3c7;
+
+  /* Status: good, warn, bad, neutral */
+  --color-good-bg: #e6f4ea;
+  --color-good-text: #13532b;
+  --color-good-border: #68b684;
+  --color-warn-bg: #fef3c7;
+  --color-warn-text: #7c4303;
+  --color-warn-border: #f59e0b;
+  --color-bad-bg: #fee2e2;
+  --color-bad-text: #991b1b;
+  --color-bad-border: #f87171;
+  --color-neutral-bg: #efece6;
+  --color-neutral-text: #4a433c;
+  --color-neutral-border: #c7bfb1;
+
+  /* Type */
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-sans: var(--font-jakarta), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Shape and depth: crisp offsets, no blur */
+  --radius-xs: 3px;
+  --shadow-card: 0 1px 2px rgb(24 21 18 / 0.06), 0 0 0 1px rgb(24 21 18 / 0.04);
+  --shadow-tactile: 3px 3px 0 #181512;
+  --shadow-tactile-sm: 2px 2px 0 #181512;
 }
 
 body {
   background-color: var(--color-paper);
   color: var(--color-ink);
+}
+
+/* One visible keyboard focus everywhere. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Anchored jump links should not hide under the sticky bars. */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Swagger UI (the /docs page) takes on the same type and colours. */
+.swagger-host .swagger-ui {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+}
+.swagger-host .swagger-ui .info .title,
+.swagger-host .swagger-ui .opblock-tag {
+  font-family: var(--font-display);
+  color: var(--color-ink);
+}
+.swagger-host .swagger-ui .btn.execute,
+.swagger-host .swagger-ui .btn.authorize {
+  background-color: var(--color-brand);
+  border-color: var(--color-brand);
+  color: #fff;
+}
+.swagger-host .swagger-ui .opblock .opblock-summary-path,
+.swagger-host .swagger-ui code,
+.swagger-host .swagger-ui .model {
+  font-family: var(--font-mono);
+}
+.swagger-host .swagger-ui a {
+  color: var(--color-brand);
 }

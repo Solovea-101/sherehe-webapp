@@ -387,6 +387,16 @@ npm run partner:key -- --name kazi           # prints a new key once, and the en
 PARTNER_KEYS=<the entry> npm start           # now partner calls work with  X-API-Key: <the key>
 ```
 
+**Development and production.** The same code runs both ways.
+
+| | `npm run dev` (development) | `npm run build` then `npm start` (production) |
+|---|---|---|
+| What it is | Next.js compiles each page as you open it and reloads when you save a file. Run it from the project folder; it needs no build first. | The built site, as Render runs it. |
+| Website | Works with no settings: register an organiser, log in, and the events show. | The same. |
+| Partner API (what Kazi Connect calls) | Closed until a key is set up: `PARTNER_KEYS=<entry> npm run dev`. For quick tries with curl, `ALLOW_OPEN_PARTNER_API=true npm run dev` leaves it open on your own computer and says so in the log. | Closed until `PARTNER_KEYS` is set. `ALLOW_OPEN_PARTNER_API` is ignored. |
+| Fonts | Fetched on first use. Without internet the site falls back to system fonts. | Fetched when `npm run build` runs, so the build needs internet once. |
+| Tests | `npm test` builds first, so it also needs internet for the fonts. | |
+
 To try training and certificates without the real Ujuzi, start the local stand-in in a second terminal and point Sherehe at it:
 
 ```text
@@ -439,7 +449,7 @@ Each step prints `PASS` or `FAIL`. A step that fails only because another system
 | `DATABASE_URL` | PostgreSQL. Empty means the in-memory store |
 | `SEED_SAMPLE_DATA` | `false` leaves a new database empty |
 | `PARTNER_KEYS` | The keys we issued, comma separated, each as `name:SHA-256-hash`. Empty means every partner call is refused |
-| `ALLOW_OPEN_PARTNER_API` | Tests only. `true` lets partner calls through while no key is set. Ignored in production |
+| `ALLOW_OPEN_PARTNER_API` | Development and tests only. `true` lets partner calls through while no key is set, and logs a warning. Ignored in production |
 | `UJUZI_API_URL`, `UJUZI_API_KEY` | Our upstream, and our key at Ujuzi |
 | `UJUZI_TIMEOUT_MS`, `BOOKING_POLL_MS` | Optional tuning of the Ujuzi timeouts and the booking check (default every five minutes) |
 | `SHEREHE_URL`, `SHEREHE_PARTNER_KEY`, `SHEREHE_CHECK_EMAIL`, `SHEREHE_CHECK_PASSWORD` | Only for `npm run ring:check` |
