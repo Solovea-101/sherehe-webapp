@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${fraunces.variable} ${jakarta.variable} ${jetbrains.variable}`}>
+    <html lang="en" data-scroll-behavior="smooth" className={`${fraunces.variable} ${jakarta.variable} ${jetbrains.variable}`}>
       <body className="min-h-screen bg-paper font-sans text-ink antialiased">
         <AuthProvider>
           <Nav />
