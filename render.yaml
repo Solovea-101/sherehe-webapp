@@ -1,7 +1,8 @@
 # Render Blueprint: one web service and one PostgreSQL database, both on the free plan.
-# Render > New > Blueprint > this repository, branch main. Secrets (marked sync: false) are typed into
-# Render's dashboard when the Blueprint is created; they are never kept in git.
-# Steps and checks: README, "Run on Render".
+# Render > New > Blueprint > this repository, branch main. PARTNER_KEYS (sync: false) is typed into
+# Render's dashboard when the Blueprint is created; Render asks only then, and secrets are never kept in git.
+# Ujuzi's URL and key are not declared here on purpose: add UJUZI_API_URL and UJUZI_API_KEY in the
+# service's Environment tab when Ujuzi is live. Steps and checks: README, "Run on Render".
 databases:
   - name: sherehe-db
     plan: free
@@ -23,8 +24,9 @@ services:
     startCommand: npm start
     healthCheckPath: /
     envVars:
+      # Render's own default is Node 24, close to the Node this was built and tested on.
       - key: NODE_VERSION
-        value: "22"
+        value: "24"
       # The database's internal connection string (same region, no SSL needed).
       - key: DATABASE_URL
         fromDatabase:
@@ -40,10 +42,4 @@ services:
       # name:SHA-256-hash of each key we issue, e.g. kazi:<hash> (npm run partner:key -- --name kazi).
       # With nothing here every partner call is refused (401).
       - key: PARTNER_KEYS
-        sync: false
-      # Ujuzi's live URL and the key Ujuzi issued to Sherehe. Leave empty until Ujuzi is live: the
-      # Ujuzi-backed endpoints then answer our own 502 and every other page works.
-      - key: UJUZI_API_URL
-        sync: false
-      - key: UJUZI_API_KEY
         sync: false
