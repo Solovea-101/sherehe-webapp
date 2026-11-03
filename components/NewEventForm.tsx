@@ -5,6 +5,7 @@ import { useState, type FormEvent } from 'react';
 import type { components } from '@/types/api';
 import { COUNTIES, EVENT_TYPES } from '@/lib/validation';
 import { api } from './api';
+import { rememberMyEvent } from '@/lib/myEventsMemory';
 import { useRequireLogin } from './AuthProvider';
 import { TYPE_LABEL } from './EventsBrowser';
 import { eatInputToUtcIso, nowAsEatInput } from './time';
@@ -43,6 +44,7 @@ export function NewEventForm() {
     });
     setBusy(false);
     if (!res.ok) return setError(res.message);
+    if (user) rememberMyEvent(user.id, res.data); // so the home page can mark it as yours
     router.push(`/events/${res.data.id}`);
   }
 
@@ -52,52 +54,61 @@ export function NewEventForm() {
   return (
     <div className="mx-auto max-w-2xl">
       <PageTitle intro="Tell us about the day. You can add the staff roles you need on the next page.">Post an event</PageTitle>
-      <Card>
-        <form onSubmit={submit} className="space-y-4" noValidate>
-          <Field label="Event name">
-            <TextInput name="name" required maxLength={120} />
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Type of event">
-              <Select name="type" defaultValue="wedding">
-                {EVENT_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {TYPE_LABEL[t]}
-                  </option>
-                ))}
-              </Select>
+      <Card variant="passbook">
+        <form onSubmit={submit} className="space-y-5" noValidate>
+          <fieldset className="space-y-4">
+            <legend className="mb-1 font-display text-base font-semibold text-brand">The celebration</legend>
+            <Field label="Event name">
+              <TextInput name="name" required maxLength={120} />
             </Field>
-            <Field label="Expected guests">
-              <TextInput name="expectedGuests" type="number" min={1} max={100000} defaultValue={100} required />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Type of event">
+                <Select name="type" defaultValue="wedding">
+                  {EVENT_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {TYPE_LABEL[t]}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Expected guests">
+                <TextInput name="expectedGuests" type="number" min={1} max={100000} defaultValue={100} required />
+              </Field>
+            </div>
+          </fieldset>
+          <fieldset className="space-y-4 border-t border-dashed border-line pt-4">
+            <legend className="mb-1 font-display text-base font-semibold text-brand">Location</legend>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="County">
+                <Select name="county" defaultValue="Nairobi">
+                  {COUNTIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Area" hint="For example Westlands, Kilimani, Nyali.">
+                <TextInput name="area" required maxLength={80} />
+              </Field>
+            </div>
+            <Field label="Venue">
+              <TextInput name="venue" required maxLength={120} />
             </Field>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="County">
-              <Select name="county" defaultValue="Nairobi">
-                {COUNTIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Area" hint="For example Westlands, Kilimani, Nyali.">
-              <TextInput name="area" required maxLength={80} />
-            </Field>
-          </div>
-          <Field label="Venue">
-            <TextInput name="venue" required maxLength={120} />
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Starts" hint="Nairobi time.">
-              <TextInput name="startsAt" type="datetime-local" min={earliest} required />
-            </Field>
-            <Field label="Ends" hint="Nairobi time.">
-              <TextInput name="endsAt" type="datetime-local" min={earliest} required />
-            </Field>
-          </div>
+          </fieldset>
+          <fieldset className="space-y-4 border-t border-dashed border-line pt-4">
+            <legend className="mb-1 font-display text-base font-semibold text-brand">Schedule</legend>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Starts" hint="Nairobi time.">
+                <TextInput name="startsAt" type="datetime-local" min={earliest} required />
+              </Field>
+              <Field label="Ends" hint="Nairobi time.">
+                <TextInput name="endsAt" type="datetime-local" min={earliest} required />
+              </Field>
+            </div>
+          </fieldset>
           {error && <Notice kind="error">{error}</Notice>}
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" disabled={busy} className="w-full sm:w-auto">
             {busy ? 'Posting...' : 'Post event'}
           </Button>
         </form>

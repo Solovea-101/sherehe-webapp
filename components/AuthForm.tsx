@@ -40,9 +40,9 @@ export function AuthForm({ mode, next: requestedNext }: { mode: 'login' | 'regis
   }
 
   return (
-    <div className="mx-auto max-w-md">
+    <div className="mx-auto mt-2 max-w-md sm:mt-8">
       <PageTitle>{registering ? 'Create your account' : 'Log in'}</PageTitle>
-      <Card>
+      <Card variant="passbook">
         <form onSubmit={submit} className="space-y-4" noValidate>
           {registering && (
             <Field label="Your name">
@@ -68,14 +68,14 @@ export function AuthForm({ mode, next: requestedNext }: { mode: 'login' | 'regis
           </Button>
         </form>
       </Card>
-      <p className="mt-4 text-center text-sm text-stone-700">
+      <p className="mt-5 text-center text-sm text-ink-secondary">
         {registering ? (
           <>
-            Already registered? <Link href="/login" className="font-semibold text-brand hover:underline">Log in</Link>
+            Already registered? <Link href="/login" className="font-semibold text-brand underline-offset-2 hover:underline">Log in</Link>
           </>
         ) : (
           <>
-            New here? <Link href="/register" className="font-semibold text-brand hover:underline">Create an account</Link>
+            New here? <Link href="/register" className="font-semibold text-brand underline-offset-2 hover:underline">Create an account</Link>
           </>
         )}
       </p>

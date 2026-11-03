@@ -1,17 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { components } from '@/types/api';
 import { CATEGORIES } from '@/lib/validation';
 import { api } from './api';
+import { CategoryIcon } from './icons';
 import { money } from './RolesTable';
 import { eatInputToUtcIso, formatEat, nowAsEatInput } from './time';
-import { Button, Field, Loading, Notice, Select, TextInput } from './ui';
+import { Button, EmptyState, Field, isPartnerMessage, Loading, Notice, PartnerDegraded, Select, TextInput } from './ui';
 
 type Event = components['schemas']['Event'];
 type Option = components['schemas']['TrainingOption'];
 type Training = components['schemas']['CrewTraining'];
+
+/** "short-course" as "Short course". */
+export const levelLabel = (level: string) => {
+  const spaced = level.replace(/-/g, ' ');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+};
 
 /** Courses at Ujuzi, to book a trained crew for one of the organiser's events. */
 export function TrainCrew({ event }: { event: Event }) {
@@ -22,6 +29,7 @@ export function TrainCrew({ event }: { event: Event }) {
   const [error, setError] = useState<string | null>(null);
   const [booked, setBooked] = useState<Training | null>(null);
   const [busy, setBusy] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,7 +44,9 @@ export function TrainCrew({ event }: { event: Event }) {
     return () => {
       cancelled = true;
     };
-  }, [category]);
+  }, [category, attempt]);
+
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -66,53 +76,72 @@ export function TrainCrew({ event }: { event: Event }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-stone-700">
+      <p className="text-sm text-ink-secondary">
         Courses are run by Ujuzi training centres. Book one before the event starts ({formatEat(event.startsAt)}).
       </p>
-      <div className="max-w-xs">
-        <Field label="Kind of work">
-          <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">Any</option>
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      </div>
-      {loadError && <Notice kind="error">{loadError}</Notice>}
-      {!loadError && options === null && <Loading>Loading courses from Ujuzi...</Loading>}
-      {options && options.length === 0 && <Notice>No courses match. Try another kind of work.</Notice>}
+      <Field label="Kind of work">
+        <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">Any</option>
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {loadError && (isPartnerMessage(loadError) ? <PartnerDegraded message={loadError} onRetry={retry} /> : <Notice kind="error">{loadError}</Notice>)}
+      {!loadError && options === null && <Loading skeletons={2}>Loading courses from Ujuzi...</Loading>}
+      {options && options.length === 0 && <EmptyState>No courses match. Try another kind of work.</EmptyState>}
       {options && options.length > 0 && (
         <form onSubmit={submit} className="space-y-4" noValidate aria-label="Book crew training">
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-stone-800">Course</legend>
-            {options.map((o) => (
-              <label key={o.courseId} className="flex cursor-pointer items-start gap-3 rounded-lg border border-stone-200 p-3 has-[:checked]:border-brand has-[:checked]:bg-orange-50">
-                <input type="radio" name="course" value={o.courseId} checked={courseId === o.courseId} onChange={() => setCourseId(o.courseId)} className="mt-1" />
-                <span className="text-sm">
-                  <span className="block font-semibold">{o.title}</span>
-                  <span className="block text-stone-600">
-                    {o.centreName}, {o.area}, {o.county} &middot; {o.durationWeeks} week{o.durationWeeks === 1 ? '' : 's'} &middot; {money(o.feeKes)} per trainee &middot; {o.certificateLevel}
+            <legend className="text-sm font-semibold text-ink">Course</legend>
+            <div className="max-h-[26rem] space-y-2 overflow-y-auto pr-1">
+              {options.map((o) => (
+                <label
+                  key={o.courseId}
+                  className="flex cursor-pointer items-start gap-3 rounded-md border border-line-strong bg-surface p-3 has-[:checked]:border-2 has-[:checked]:border-brand has-[:checked]:bg-brand-subtle"
+                >
+                  <input type="radio" name="course" value={o.courseId} checked={courseId === o.courseId} onChange={() => setCourseId(o.courseId)} className="mt-1 size-4 accent-brand" />
+                  <span className="min-w-0 text-sm">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-brand">
+                        <CategoryIcon category={o.category} size={16} />
+                      </span>
+                      <span className="font-bold">{o.title}</span>
+                    </span>
+                    <span className="mt-0.5 block text-ink-secondary">
+                      {o.centreName}, {o.area}, {o.county}
+                    </span>
+                    <span className="mt-1 block font-mono text-xs text-ink-secondary">
+                      {money(o.feeKes)} per trainee &middot; {o.durationWeeks} week{o.durationWeeks === 1 ? '' : 's'} &middot; {levelLabel(o.certificateLevel)}
+                    </span>
+                    <span className="block font-mono text-xs text-ink-muted">Next course starts {formatEat(o.nextStart)}</span>
                   </span>
-                  <span className="block text-stone-500">Next course starts {formatEat(o.nextStart)}</span>
-                </span>
-              </label>
-            ))}
+                </label>
+              ))}
+            </div>
           </fieldset>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="How many people to train" hint="1 to 40.">
-              <TextInput name="crewSize" type="number" min={1} max={40} defaultValue={4} required />
-            </Field>
-            <Field label="Preferred start" hint="Nairobi time, before the event.">
-              <TextInput name="preferredStart" type="datetime-local" min={nowAsEatInput()} required />
-            </Field>
+          {/* Once a course is chosen this panel stays in reach at the bottom of a phone screen. */}
+          <div
+            className={
+              'space-y-3 rounded-md border-2 border-line-strong bg-surface-warm p-3 ' +
+              (courseId ? 'sticky bottom-[4.5rem] z-10 shadow-tactile-sm md:static' : '')
+            }
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="How many people to train" hint="1 to 40.">
+                <TextInput name="crewSize" type="number" min={1} max={40} defaultValue={4} required />
+              </Field>
+              <Field label="Preferred start" hint="Nairobi time, before the event.">
+                <TextInput name="preferredStart" type="datetime-local" min={nowAsEatInput()} required />
+              </Field>
+            </div>
+            {error && <Notice kind="error">{error}</Notice>}
+            <Button type="submit" disabled={busy} className="w-full sm:w-auto">
+              {busy ? 'Booking...' : 'Book training'}
+            </Button>
           </div>
-          {error && <Notice kind="error">{error}</Notice>}
-          <Button type="submit" disabled={busy}>
-            {busy ? 'Booking...' : 'Book training'}
-          </Button>
         </form>
       )}
     </div>

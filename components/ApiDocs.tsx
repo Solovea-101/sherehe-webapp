@@ -9,5 +9,9 @@ const SwaggerUI = dynamic(() => import('swagger-ui-react'), { ssr: false, loadin
 
 /** Every endpoint, with request and response shapes, drawn from the same openapi.yaml the API is checked against. */
 export function ApiDocs() {
-  return <SwaggerUI url="/openapi.yaml" docExpansion="list" defaultModelsExpandDepth={1} />;
+  return (
+    <div className="swagger-host overflow-x-auto rounded-md border border-line bg-surface p-2 shadow-card sm:p-4">
+      <SwaggerUI url="/openapi.yaml" docExpansion="list" defaultModelsExpandDepth={1} />
+    </div>
+  );
 }
