@@ -458,12 +458,12 @@ See `.env.example`. Real values live in Render's settings, never in git.
 
 1. **New, Blueprint**, connect this GitHub repository, branch `main`. Render reads `render.yaml` and creates both.
 2. Make Kazi Connect's key on your own computer: `npm run partner:key -- --name kazi`. It prints a raw key once and a `kazi:<hash>` line. Give Render only the `kazi:<hash>` line, as `PARTNER_KEYS`. Send the raw key to Kazi Connect privately (never in git or a shared channel). Make a fresh key for Render; do not reuse one from the local ring.
-3. Leave `UJUZI_API_URL` and `UJUZI_API_KEY` empty until Ujuzi is live. Until then the pages that need Ujuzi (training options, crew trainings, certificate checks) answer Sherehe's own `502`, and everything else works.
+3. Do not set `UJUZI_API_URL` or `UJUZI_API_KEY` yet: the Blueprint does not ask for them. Until Ujuzi is live the pages that need it (training options, crew trainings, certificate checks) answer Sherehe's own `502`, and everything else works.
 4. Deploy. The log should show `Partner keys loaded: 1 (kazi)`, `Database migrated: ...`, `Database ready (PostgreSQL)` and `Booking poller not started: UJUZI_API_URL is not set`.
 5. In Kazi Connect's own settings set `SHEREHE_API_URL` to this service's URL and `SHEREHE_API_KEY` to the raw key, then redeploy Kazi.
-6. When Ujuzi is live and has issued Sherehe a key (named `sherehe` in Ujuzi's `PARTNER_KEYS`), set `UJUZI_API_URL` and `UJUZI_API_KEY` here and redeploy. The booking check then starts.
+6. When Ujuzi is live and has issued Sherehe a key (named `sherehe` in Ujuzi's `PARTNER_KEYS`), open the service's Environment tab, add `UJUZI_API_URL` and `UJUZI_API_KEY`, and save. Render redeploys and the booking check starts.
 
-The build command is `npm ci --include=dev && npm run build`: Render sets `NODE_ENV=production`, which would otherwise skip the packages the build and `npm start` need.
+The build command is `npm ci --include=dev && npm run build`: the build and `npm start` need typescript, tailwindcss and tsx, which are development packages, so they are installed explicitly. The Blueprint asks for the Node version with `NODE_VERSION=24`.
 
 **Checks against the live service** (replace `<sherehe>` with the service name)
 
