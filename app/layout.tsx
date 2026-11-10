@@ -6,7 +6,6 @@ import { Nav } from '@/components/Nav';
 import './globals.css';
 
 // Three families, fetched once at build time and served from our own address (no request to Google
-// from the visitor's phone). Each is one variable font file, latin letters only. (A list of separate
 // weights makes Turbopack's font loader fail: "queries have exactly one entry".)
 const fraunces = Fraunces({ subsets: ['latin'], variable: '--font-fraunces', display: 'swap' });
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-jakarta', display: 'swap' });
