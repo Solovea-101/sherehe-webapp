@@ -6,6 +6,7 @@ import { WebSocketServer } from 'ws';
 import { describePartnerKeys } from '@/lib/auth/partnerKeyConfig';
 import { getStore } from '@/lib/db';
 import { startBookingPoller } from '@/lib/jobs/bookingPoller';
+import { monitor } from '@/lib/monitoring';
 
 // The one path where our own WebSocket upgrades are accepted. Next.js keeps /_next/* (dev hot reload).
 const WS_PATH = '/ws';
@@ -40,6 +41,8 @@ export function createServer(): http.Server {
   ready.catch((err: unknown) => console.error('Next.js failed to start:', err));
 
   server.on('request', async (req, res) => {
+    // First of all, so that a request refused further on (401, 429) is logged and counted too (Week 12).
+    monitor(req, res);
     // Who is calling, for the rate limiter. Always set here, so a caller cannot choose its own value.
     req.headers['x-sherehe-client-ip'] = clientAddress(req);
     try {

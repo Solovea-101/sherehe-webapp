@@ -6,6 +6,8 @@ process.env.PARTNER_KEYS = '';
 // The partner API refuses everyone when no key is set. Most suites predate that and call it without
 // a key, so they ask for it open (never honoured in production); partnerKey.test.ts turns this off.
 process.env.ALLOW_OPEN_PARTNER_API = 'true';
+// One JSON line for every request would bury the test output. monitoring.test.ts turns the log on.
+process.env.REQUEST_LOG = 'false';
 // The tests send hundreds of requests a second from one address; the limiter has its own tests.
 process.env.RATE_LIMIT_MAX = '0';
 // A failed read is tried up to twice more, 200 ms and then 400 ms apart. Tests that fail on purpose would wait that

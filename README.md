@@ -383,6 +383,53 @@ Sherehe's calls to Ujuzi are built to cope, and say plainly what they did. All o
 
 Only the course list (`GET /api/training-options`) is ever served as a saved copy. A certificate check never is: a saved "valid" could be wrong, so it fails instead. The saved copy lives in memory and is gone when the server restarts. The log says why every failure happened (for example `Ujuzi could not be reached (ECONNREFUSED)`) and never contains a key. Settings: `UJUZI_TIMEOUT_MS`, `UJUZI_RETRIES`, `UJUZI_RETRY_DELAY_MS` (see `.env.example`). `npm run flaky` starts a stand-in Ujuzi that you can make slow, flaky, always failing or rate-limited without restarting it, for trying all of this yourself.
 
+## Monitoring: the request log and `GET /api/stats`
+
+Two small tools show what the API is doing without anyone watching the terminal. The code is `lib/monitoring.ts`; it is registered first in `server.ts`, so a request refused with 401 or 429 is logged and counted too.
+
+**The request log** is one line of JSON for each finished request, written to the terminal:
+
+```json
+{"time":"2026-11-10T15:03:53.465Z","method":"GET","path":"/api/events","status":200,"ms":23.4,"caller":"key-625662","partner":"labs"}
+{"time":"2026-11-10T15:03:53.477Z","method":"GET","path":"/api/events","status":401,"ms":2.3,"caller":"none"}
+```
+
+`caller` is a label for who called: `key-` and the first 6 characters of the SHA-256 of the key (the same key always gets the same label, and nobody can get the key back from it), with `partner` the name the key was issued to; `login` for a logged-in organiser; `none` for a wrong or missing key. **Never logged:** a key or token (not even part of one), a password, a request or response body, or a query string (the path only). Not logged or counted: the website's own files under `/_next/`. Keep the log in a file with `npm run start:logged` (it writes `requests.log`, which git ignores), switch it off with `REQUEST_LOG=false`, and check that your key is not in it with `grep -c "<your-api-key>" requests.log`, which must print 0.
+
+**`GET /api/stats`** shows running totals since the server started. It needs a partner key, like every other partner endpoint (`X-API-Key`; without one the answer is 401), and it answers 405 to any other method.
+
+```bash
+curl -s -H "X-API-Key: <your-api-key>" https://<sherehe>.onrender.com/api/stats
+```
+
+```json
+{
+  "startedAt": "2026-11-10T15:03:46.472Z",
+  "uptimeSeconds": 3676,
+  "total": 244,
+  "clientErrors": 138,
+  "serverErrors": 0,
+  "errorRatePercent": 0,
+  "avgMs": 3.6,
+  "routes": {
+    "GET /api/events": { "count": 132, "clientErrors": 62, "serverErrors": 0, "avgMs": 3.5, "maxMs": 23.4 },
+    "GET /api/events/:id": { "count": 44, "clientErrors": 36, "serverErrors": 0, "avgMs": 3.2, "maxMs": 5.2 },
+    "GET /api/events/:id/roles": { "count": 27, "clientErrors": 0, "serverErrors": 0, "avgMs": 4.1, "maxMs": 17.7 },
+    "GET /api/offers/:id": { "count": 11, "clientErrors": 11, "serverErrors": 0, "avgMs": 3.6, "maxMs": 4.5 },
+    "(no route)": { "count": 29, "clientErrors": 29, "serverErrors": 0, "avgMs": 3.2, "maxMs": 7.1 }
+  },
+  "partners": { "ujuzi": { "attempts": 0, "retries": 0, "savedCopies": 0, "unavailable": 0 } }
+}
+```
+
+(Real output from a test copy; the one-request row for the website's home page, `GET (page)`, is left out here for length.) `total` is every request that finished. `clientErrors` counts 4xx, usually the caller's mistake; `serverErrors` counts 5xx, which are ours, and **`errorRatePercent` is built from 5xx only**. `routes` groups by route pattern, so every event id shares the row `GET /api/events/:id` and the list cannot grow without end; `(no route)` holds 401s from the key check and 404s for paths that do not exist (the log tells them apart), and `GET (page)` is the website. `partners` counts how often calls to Ujuzi needed help: `attempts` (every try), `retries`, `savedCopies` (answers that were a flagged saved copy) and `unavailable` (our own 502), so you can see how often Ujuzi really fails.
+
+**Honest limits.** The numbers live in this server's memory: they start again at every restart (on Render's free tier, after every sleep), they are wrong across several copies of the server, and the request that asks is not counted in its own answer (it is in the next). A production system sends them to a shared tool. A keyless call cannot be told apart in the log: every caller with no valid key is `none`.
+
+**Why `/api/stats` is not in `openapi.yaml`.** The contract holds the endpoints that trace to a need statement (K1 to K5 for Kazi Connect, the website's own needs, S1 to S5 from Ujuzi). This one serves no partner need; it is operations. Putting it in the contract would also make it a change to announce to Kazi Connect before it is deployed (R8). So it is documented here, and `/docs` does not list it.
+
+To try it: `API=http://localhost:3000 KEY=<a partner key> npm run traffic` sends a random read-only mix of good requests, missing ids, no key, a wrong key and a path that does not exist (`N=200` sends more; `PAUSE=0` hits the rate limit on purpose).
+
 ## Run the API on your own computer
 
 You need Node.js 20.9 or newer (Next.js requires it) and Git. Everything else installs with the project.
