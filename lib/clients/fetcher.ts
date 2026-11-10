@@ -11,6 +11,8 @@
  *    our own 502 { message }. The partner's own error text is never passed on to our clients.
  */
 
+import { countPartner } from '@/lib/clients/partnerCounters';
+
 /** The partner could not be reached, was too slow, or gave an answer we cannot use. */
 export class PartnerUnavailableError extends Error {
   constructor(
@@ -208,6 +210,7 @@ export async function partnerFetch(req: PartnerRequest): Promise<PartnerResponse
   try {
     for (let attempt = 0; ; attempt++) {
       try {
+        countPartner(req.partner, 'attempts');
         const response = await attemptOnce(req, method, limitMs);
         if (ttl > 0 && response.status === 200) {
           cache.delete(cacheKey); // re-inserted below, so the oldest entry is the first key
@@ -221,6 +224,7 @@ export async function partnerFetch(req: PartnerRequest): Promise<PartnerResponse
         if (wait === null) throw err;
         // The message holds only the partner's name and the reason, never the key or the address.
         console.warn(`${err.message}; attempt ${attempt + 1} of ${retries + 1}, trying again in ${wait} ms`);
+        countPartner(req.partner, 'retries');
         await sleep(wait);
       }
     }
@@ -230,10 +234,12 @@ export async function partnerFetch(req: PartnerRequest): Promise<PartnerResponse
       if (Date.now() - saved.storedAt <= STALE_MAX_AGE_MS) {
         const asOf = isoSeconds(saved.storedAt);
         console.warn(`${err.message}; answering with the saved copy from ${asOf}`);
+        countPartner(req.partner, 'savedCopies');
         return { ...structuredClone(saved.response), stale: { asOf } };
       }
       cache.delete(cacheKey); // too old to be a fair picture of today
     }
+    if (err instanceof PartnerUnavailableError) countPartner(req.partner, 'unavailable');
     throw err;
   }
 }

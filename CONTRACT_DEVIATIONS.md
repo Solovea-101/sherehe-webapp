@@ -73,6 +73,10 @@ No entry from the team yet. TODO, same rule.
 - **Needs the humans:** issuing Kazi its key, setting `PARTNER_KEYS` and `REQUIRE_PARTNER_KEY=true` in Render, setting `UJUZI_API_KEY` there (once Ujuzi issues one), and telling Kazi's sub-team **before** this is deployed (R8): Kazi must start sending `X-API-Key` on endpoints 1-6.
 - **`npm run ring:check` (R9)** is built. Its report was only ever run against local copies; the real run needs the live URLs and keys. See HELD_ISSUES.md, H2, H3 and H8.
 
+## `GET /api/stats` is not in the contract, on purpose (2026-11-10, Week 12)
+
+Notes from the coding agent. Week 12 adds an operations endpoint, `GET /api/stats` (running totals of requests, errors and times, and how often calls to Ujuzi needed retries or a saved copy). It needs a partner key. It is documented in the README ("Monitoring") and is deliberately **not** in `openapi.yaml`: the Week 12 handout asks for it in the README, it serves no need in `API_NEEDS.md`, and putting it in the contract would be a change to announce to Kazi Connect before deploying (R8). The partner endpoints K1 to K5 are unchanged. Ujuzi's session put its own `GET /api/stats` in its contract (0.5.0 on its branch); that is its choice, and either is defensible. If the team prefers it in the contract, it is a small addition to `openapi.yaml` and `types/api.d.ts` and an `info.version` bump.
+
 ## A saved copy of the course list, flagged by two headers (2026-11-10, Week 11)
 
 Notes from the coding agent. `openapi.yaml` has still not been handed off, so `info.version` stays 0.1.0; this is the list to tell Kazi Connect when it is. None of it touches the partner endpoints Kazi Connect calls (K1 to K5).

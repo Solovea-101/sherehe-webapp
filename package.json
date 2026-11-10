@@ -13,6 +13,7 @@
     "dev": "tsx watch server.ts",
     "build": "next build",
     "start": "NODE_ENV=production tsx server.ts",
+    "start:logged": "NODE_ENV=production tsx server.ts | tee requests.log",
     "typecheck": "tsc --noEmit",
     "types": "npm run generate --workspace tools/generate-types",
     "test": "next build && jest --runInBand",
@@ -22,6 +23,7 @@
     "ring:e2e": "tsx scripts/ringE2E.ts",
     "drill": "tsx scripts/partnerDrill.ts",
     "flaky": "tsx scripts/flakyUjuzi.ts",
+    "traffic": "tsx scripts/traffic.ts",
     "partner:key": "tsx scripts/issuePartnerKey.ts",
     "db:migrate": "tsx lib/db/migrate.ts",
     "db:seed": "tsx lib/db/seed.ts"
