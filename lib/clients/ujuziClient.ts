@@ -54,7 +54,7 @@ function url(path: string, query?: { [name: string]: string | undefined }): stri
 
 function call(
   path: string,
-  init: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; query?: { [name: string]: string | undefined }; cache?: boolean } & UjuziOptions = {},
+  init: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; query?: { [name: string]: string | undefined }; cache?: boolean; serveStale?: boolean } & UjuziOptions = {},
 ): Promise<PartnerResponse> {
   const key = process.env.UJUZI_API_KEY?.trim();
   return partnerFetch({
@@ -65,6 +65,7 @@ function call(
     body: init.body,
     background: init.background,
     cacheTtlMs: init.cache ? CACHE_TTL_MS : 0,
+    serveStale: init.serveStale,
   });
 }
 
@@ -120,12 +121,31 @@ function expect(res: PartnerResponse, ...allowed: number[]): void {
 
 // ---- S1: courses -----------------------------------------------------------------------------
 
-/** Courses, optionally for one category and county. Remembered for 5 minutes: courses change daily at most. */
-export async function listCourses(filter: { category?: string; county?: string } = {}, opts: UjuziOptions = {}): Promise<UjuziCourse[]> {
-  const res = await call('/api/courses', { query: { category: filter.category, county: filter.county }, cache: true, ...opts });
+/** The courses, and when they were fetched if this is a saved copy because Ujuzi could not be reached. */
+export interface CourseList {
+  courses: UjuziCourse[];
+  /** Set only for a saved copy: the time it was fetched (UTC, ending in Z, no milliseconds). Absent means fresh. */
+  asOf?: string;
+}
+
+async function readCourses(filter: { category?: string; county?: string }, opts: UjuziOptions, serveStale: boolean): Promise<CourseList> {
+  const res = await call('/api/courses', { query: { category: filter.category, county: filter.county }, cache: true, serveStale, ...opts });
   expect(res, 200);
   if (!Array.isArray(res.body)) return mismatch('course list');
-  return res.body.map(parseCourse);
+  return { courses: res.body.map(parseCourse), ...(res.stale ? { asOf: res.stale.asOf } : {}) };
+}
+
+/** Courses, optionally for one category and county. Remembered for 5 minutes: courses change daily at most. */
+export async function listCourses(filter: { category?: string; county?: string } = {}, opts: UjuziOptions = {}): Promise<UjuziCourse[]> {
+  return (await readCourses(filter, opts, false)).courses;
+}
+
+/**
+ * The same, for a caller that can show a saved copy honestly: when Ujuzi cannot be reached it answers with the
+ * last good list (up to an hour old) and says when it was fetched, instead of failing. The caller must show that.
+ */
+export async function listCoursesWithFreshness(filter: { category?: string; county?: string } = {}, opts: UjuziOptions = {}): Promise<CourseList> {
+  return readCourses(filter, opts, true);
 }
 
 // ---- S2: certificates ------------------------------------------------------------------------

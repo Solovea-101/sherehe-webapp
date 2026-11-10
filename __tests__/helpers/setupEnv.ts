@@ -8,6 +8,9 @@ process.env.PARTNER_KEYS = '';
 process.env.ALLOW_OPEN_PARTNER_API = 'true';
 // The tests send hundreds of requests a second from one address; the limiter has its own tests.
 process.env.RATE_LIMIT_MAX = '0';
+// A failed read is tried up to twice more, 200 ms and then 400 ms apart. Tests that fail on purpose would wait that
+// long every time, so they wait 5 ms; the tests of the delays themselves put the default back.
+process.env.UJUZI_RETRY_DELAY_MS = '5';
 // `npm run test:partner` aims at the real Ujuzi on purpose, so it keeps the Ujuzi settings it was given.
 if (process.env.PARTNER_TESTS !== 'true') {
   process.env.UJUZI_API_URL = ''; // tests that need Ujuzi point this at the local stub

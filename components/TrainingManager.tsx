@@ -11,7 +11,7 @@ import { CategoryIcon } from './icons';
 import { money } from './RolesTable';
 import { levelLabel } from './TrainCrew';
 import { eatInputToUtcIso, formatEat, nowAsEatInput, utcIsoToEatInput } from './time';
-import { Badge, Button, Card, EmptyState, Field, isPartnerMessage, Loading, Notice, PageTitle, PartnerDegraded, Select, TextInput } from './ui';
+import { Badge, Button, Card, EmptyState, Field, isPartnerMessage, Loading, Notice, PageTitle, PartnerDegraded, SavedDataNotice, Select, TextInput } from './ui';
 
 type Training = components['schemas']['CrewTraining'];
 type Option = components['schemas']['TrainingOption'];
@@ -109,12 +109,14 @@ function CourseBrowser() {
   const [category, setCategory] = useState('');
   const [county, setCounty] = useState('');
   const [options, setOptions] = useState<Option[] | null>(null);
+  const [savedAsOf, setSavedAsOf] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setOptions(null);
+    setSavedAsOf(null);
     setError(null);
     const params = new URLSearchParams();
     if (category) params.set('category', category);
@@ -122,8 +124,10 @@ function CourseBrowser() {
     const qs = params.toString();
     void api<Option[]>(`/api/training-options${qs ? `?${qs}` : ''}`).then((res) => {
       if (cancelled) return;
-      if (res.ok) setOptions(res.data);
-      else setError(res.message);
+      if (res.ok) {
+        setOptions(res.data);
+        setSavedAsOf(res.stale?.asOf ?? null);
+      } else setError(res.message);
     });
     return () => {
       cancelled = true;
@@ -147,6 +151,7 @@ function CourseBrowser() {
         </Field>
       </div>
       {error && (isPartnerMessage(error) ? <PartnerDegraded message={error} onRetry={() => setAttempt((n) => n + 1)} /> : <Notice kind="error">{error}</Notice>)}
+      {savedAsOf && <SavedDataNotice asOf={savedAsOf} />}
       {!error && options === null && <Loading skeletons={2}>Loading courses from Ujuzi...</Loading>}
       {options && options.length === 0 && <EmptyState>No courses match.</EmptyState>}
       {options && options.length > 0 && (

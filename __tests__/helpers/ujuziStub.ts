@@ -10,7 +10,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-export type StubMode = 'ok' | 'down' | 'slow' | 'error500' | 'unauthorized' | 'garbage' | 'wrongShape' | 'redirect' | 'rateLimited';
+export type StubMode = 'ok' | 'down' | 'slow' | 'error500' | 'unauthorized' | 'garbage' | 'wrongShape' | 'redirect' | 'rateLimited' | 'flaky' | 'limitedOnce';
 
 export interface StubCall {
   method: string;
@@ -77,6 +77,8 @@ const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
 export async function startUjuziStub(opts: { requireKey?: string } = {}): Promise<UjuziStub> {
   let nextBooking = 6001;
+  let flakyCalls = 0; // 'flaky' fails two calls in three
+  let limitedCalls = 0; // 'limitedOnce' limits only the first call
   const timers = new Set<NodeJS.Timeout>(); // pending 'slow' answers, cancelled on reset and close
   const stub: UjuziStub = {
     url: '',
@@ -95,6 +97,8 @@ export async function startUjuziStub(opts: { requireKey?: string } = {}): Promis
       timers.forEach(clearTimeout);
       timers.clear();
       stub.calls.length = 0;
+      flakyCalls = 0;
+      limitedCalls = 0;
       stub.mode = 'ok';
       stub.slowMs = 1500;
       stub.requireKey = opts.requireKey;
@@ -148,6 +152,19 @@ export async function startUjuziStub(opts: { requireKey?: string } = {}): Promis
           // Ujuzi 0.3.0 limits each caller; a 429 means the request was not carried out.
           res.setHeader('Retry-After', '30');
           return message(res, 429, 'Too many requests. Wait a little and try again.');
+        case 'flaky':
+          // Fails twice with 503, then works, and so on: the handout's flaky partner.
+          flakyCalls += 1;
+          if (flakyCalls % 3 !== 0) return message(res, 503, 'Try again');
+          return respond();
+        case 'limitedOnce':
+          // A 429 that asks for a one second wait, only for the first call; after that Ujuzi is fine.
+          limitedCalls += 1;
+          if (limitedCalls === 1) {
+            res.setHeader('Retry-After', '1');
+            return message(res, 429, 'Too many requests. Wait a little and try again.');
+          }
+          return respond();
         case 'garbage':
           res.setHeader('Content-Type', 'text/html');
           return void res.end('<html><body>Render is waking up...</body></html>');

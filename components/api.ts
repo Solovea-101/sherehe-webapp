@@ -1,7 +1,14 @@
 // How the website talks to Sherehe: always through our own /api with fetch, never the database or
 // Ujuzi directly. The login token lives in this browser's localStorage and is sent as a Bearer token.
 
-export type ApiResult<T> = { ok: true; status: number; data: T } | { ok: false; status: number; message: string };
+/**
+ * `stale` is set only when the server says the data is a saved copy because a partner could not be reached
+ * (the response headers X-Data-Stale and X-Data-As-Of). The page must tell the person: an old copy shown as if
+ * it were live would be a lie.
+ */
+export type ApiResult<T> =
+  | { ok: true; status: number; data: T; stale?: { asOf: string } }
+  | { ok: false; status: number; message: string };
 
 export const TOKEN_KEY = 'sherehe.token';
 export const AUTH_CHANGED = 'sherehe:auth-changed';
@@ -69,7 +76,11 @@ export async function api<T>(
     body = undefined;
   }
 
-  if (res.ok) return { ok: true, status: res.status, data: body as T };
+  if (res.ok) {
+    const asOf = res.headers?.get('x-data-as-of') ?? null;
+    const saved = res.headers?.get('x-data-stale') === 'true' && asOf !== null && !Number.isNaN(Date.parse(asOf));
+    return { ok: true, status: res.status, data: body as T, ...(saved ? { stale: { asOf } } : {}) };
+  }
   // A rejected login means the saved token is no good any more: forget it so the page asks again.
   if (res.status === 401 && token) setToken(null);
   const message =

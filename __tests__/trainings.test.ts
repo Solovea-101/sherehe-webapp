@@ -90,6 +90,81 @@ describe('GET /api/training-options (O4, S1)', () => {
   });
 });
 
+describe('GET /api/training-options when Ujuzi stops answering (Week 11: a saved copy, flagged)', () => {
+  const ISO_UTC_NO_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+  const later = (ms: number) => {
+    const real = Date.now.bind(Date);
+    jest.spyOn(Date, 'now').mockImplementation(() => real() + ms);
+  };
+  beforeEach(() => jest.spyOn(console, 'warn').mockImplementation(() => undefined));
+  afterEach(() => jest.restoreAllMocks()); // the shifted clock must not leak into the tests after these
+
+  it('sends the last good list as a bare array with X-Data-Stale and X-Data-As-Of, once the 5-minute memory has expired', async () => {
+    const me = await newOrganiser(app());
+    const fresh = await request(app()).get('/api/training-options?category=catering').set(me.auth);
+    expect(fresh.status).toBe(200);
+    expect(fresh.headers['x-data-stale']).toBeUndefined(); // a live answer carries neither header
+    expect(fresh.headers['x-data-as-of']).toBeUndefined();
+
+    later(6 * 60 * 1000);
+    ujuzi().mode = 'down';
+    const saved = await request(app()).get('/api/training-options?category=catering').set(me.auth);
+    expect(saved.status).toBe(200);
+    expect(Array.isArray(saved.body)).toBe(true); // the body stays a bare array, as in every other list
+    expect(saved.body).toEqual(fresh.body);
+    expect(saved.headers['x-data-stale']).toBe('true');
+    expect(saved.headers['x-data-as-of']).toMatch(ISO_UTC_NO_MS);
+    expect(Date.parse(saved.headers['x-data-as-of'])).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('is live again as soon as Ujuzi is back, with neither header', async () => {
+    const me = await newOrganiser(app());
+    await request(app()).get('/api/training-options?category=catering').set(me.auth);
+    later(6 * 60 * 1000);
+    ujuzi().mode = 'down';
+    expect((await request(app()).get('/api/training-options?category=catering').set(me.auth)).headers['x-data-stale']).toBe('true');
+    ujuzi().mode = 'ok';
+    const back = await request(app()).get('/api/training-options?category=catering').set(me.auth);
+    expect(back.status).toBe(200);
+    expect(back.headers['x-data-stale']).toBeUndefined();
+  });
+
+  it('answers our own 502 when nothing has ever been saved for that question, with no stale headers', async () => {
+    const me = await newOrganiser(app());
+    ujuzi().mode = 'down';
+    const res = await request(app()).get('/api/training-options?category=security').set(me.auth);
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ message: 'Ujuzi is not responding right now. Try again in a minute.' });
+    expect(res.headers['x-data-stale']).toBeUndefined();
+  });
+
+  it('answers our own 502 for a copy older than an hour', async () => {
+    const me = await newOrganiser(app());
+    await request(app()).get('/api/training-options').set(me.auth);
+    later(61 * 60 * 1000);
+    ujuzi().mode = 'down';
+    expect((await request(app()).get('/api/training-options').set(me.auth)).status).toBe(502);
+  });
+
+  it('never saves a certificate check: with Ujuzi down it is our 502 even right after a good one', async () => {
+    const me = await newOrganiser(app());
+    const good = await request(app()).post('/api/certificate-checks').set(me.auth).send({ certificateNo: 'UJZ-2026-00123' });
+    expect(good.status).toBe(201);
+    ujuzi().mode = 'down';
+    const again = await request(app()).post('/api/certificate-checks').set(me.auth).send({ certificateNo: 'UJZ-2026-00123' });
+    expect(again.status).toBe(502);
+    expect(again.headers['x-data-stale']).toBeUndefined();
+  });
+
+  it('lets a browser page read the two headers (CORS exposes them)', async () => {
+    const me = await newOrganiser(app());
+    const res = await request(app()).get('/api/training-options').set(me.auth);
+    const exposed = String(res.headers['access-control-expose-headers']).toLowerCase();
+    expect(exposed).toContain('x-data-stale');
+    expect(exposed).toContain('x-data-as-of');
+  });
+});
+
 describe('POST /api/crew-trainings (O4, S3)', () => {
   it('books at Ujuzi and records it: 201, Location, our own id, status pending', async () => {
     const me = await organiserWithEvent(app());

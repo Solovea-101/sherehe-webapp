@@ -366,7 +366,22 @@ Every failure answers with one field, `message`, in plain English, and nothing i
 | 413 | Body too large | More than 20 KB of JSON |
 | 429 | Too many requests | Over the rate limit. The request was not carried out; wait `Retry-After` seconds (also `retryAfter` in the body) |
 | 500 | Our bug | Never shows internal details; the cause is in the server log |
-| 502 | Ujuzi could not be reached or gave an answer we cannot use | Ujuzi asleep, slow (over 10 s), refusing our key, or down. Only the endpoints that need Ujuzi are affected; try again in a minute |
+| 502 | Ujuzi could not be reached or gave an answer we cannot use | Ujuzi asleep, slow (no answer within 2.5 s on each of 3 tries), refusing our key, or down. Only the endpoints that need Ujuzi are affected; try again in a minute |
+
+## When Ujuzi is slow, flaky or down
+
+Sherehe's calls to Ujuzi are built to cope, and say plainly what they did. All of it is in `lib/clients/fetcher.ts`.
+
+| Situation | What Sherehe does | What the caller sees |
+|---|---|---|
+| Ujuzi is slow | Gives up on each try after **2.5 s** when a person is waiting (60 s for the background booking check) | Our own 502 after at most 8.1 s, or the saved copy below |
+| A try fails in a way that may pass (timeout, connection refused, a 5xx, or a 429 asking for 5 s or less) | Tries again, **at most 2 more times**, waiting 200 ms and then 400 ms (or the `Retry-After` the partner asked for). Worst case: 3 x 2.5 s + 200 ms + 400 ms = **8.1 s** | Nothing, if a later try works |
+| The request is wrong or refused (400, 401, 403, 404) | Does **not** retry: asking again changes nothing | Our 502 for a refused key, and the usual 404 or 400 |
+| The request changes data (booking, change, cancel) | Does **not** retry: it could be done twice | Our 502 |
+| Every try fails and a course list was fetched before | Sends **a saved copy of the last good answer, kept in memory, for up to an hour**, with the headers `X-Data-Stale: true` and `X-Data-As-Of: <time, UTC>`. The body is the same bare array. The website shows a notice with the time | 200 and the old list, flagged |
+| Every try fails and nothing is saved | Our own 502 `{ "message": "Ujuzi is not responding right now. Try again in a minute." }` | 502 |
+
+Only the course list (`GET /api/training-options`) is ever served as a saved copy. A certificate check never is: a saved "valid" could be wrong, so it fails instead. The saved copy lives in memory and is gone when the server restarts. The log says why every failure happened (for example `Ujuzi could not be reached (ECONNREFUSED)`) and never contains a key. Settings: `UJUZI_TIMEOUT_MS`, `UJUZI_RETRIES`, `UJUZI_RETRY_DELAY_MS` (see `.env.example`). `npm run flaky` starts a stand-in Ujuzi that you can make slow, flaky, always failing or rate-limited without restarting it, for trying all of this yourself.
 
 ## Run the API on your own computer
 

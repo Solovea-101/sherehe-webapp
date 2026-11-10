@@ -92,6 +92,19 @@ describe('the organiser of the event', () => {
     expect(screen.getByText(/Four trained caterers/)).toBeInTheDocument();
   });
 
+  it('shows the saved list of courses with a notice when Ujuzi is not answering', async () => {
+    installFetch({
+      ...owner(),
+      'GET /api/training-options': () => ({
+        body: [{ courseId: 'crs_501', title: 'Food hygiene and event service', category: 'catering', centreName: 'Westlands Skills Centre', county: 'Nairobi', area: 'Westlands', durationWeeks: 2, feeKes: 3500, nextStart: '2026-11-23T07:00:00Z', certificateLevel: 'short-course' }],
+        headers: { 'X-Data-Stale': 'true', 'X-Data-As-Of': '2026-11-05T14:24:11Z' },
+      }),
+    });
+    show();
+    expect(await screen.findByText('Showing the courses saved at Thu 5 Nov 2026, 17:24 EAT')).toBeInTheDocument();
+    expect(screen.getByText(/Food hygiene and event service/)).toBeInTheDocument();
+  });
+
   it('accepts an offer: sends the decision, then shows the new state', async () => {
     const { calls } = installFetch({
       ...owner(),
