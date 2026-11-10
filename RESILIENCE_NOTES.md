@@ -93,7 +93,9 @@ Two things this showed. With a refused connection each failing page load took ab
 
 Kazi Connect is our consumer, so I was the partner that stopped. A separate test copy of Sherehe (port 4101, same build) was stopped at 14:56:18Z and started again at 14:56:38Z (about 20 s). Kazi Connect's account, in its own words and numbers: it read at 14:56:25Z and got **its saved list** (HTTP 200 in 0.63 s, 10 openings, its header `X-Data-Saved-At: 14:50:52Z`) after **2 retries** (ECONNREFUSED, 200 ms then 400 ms in its log); a county it had never read gave **its own 502** in 0.61 s; its jobs endpoint kept answering 200. At 14:56:44Z it read our restarted copy: every county answered 200 in 0.019 s with no `X-Data-Saved-At` header, so live, and it changed nothing on its side. Its counters for the drill: 4 retries, saved data served once. The Week 11 drill is complete from its side. Our log shows nothing about this yet: we log no requests until Week 12.
 
-Still TODO: the drill on the live URLs, and a screenshot or recording of the saved-data notice with the partner stopped (the team).
+Screenshots of the fallback with the partner stopped are in `evidence/week11/`: the saved list with its notice, and the friendly message when nothing was saved. They were captured by the coding agent on a local test copy against the stand-in Ujuzi, not on the live site (see that folder's README); the team may add its own from the live site.
+
+Still TODO: the drill on the live URLs.
 
 ## Checks
 
