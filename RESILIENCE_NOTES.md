@@ -89,7 +89,11 @@ Ujuzi's session ran its build on `:4013` (the calls Sherehe makes, S1 to S5, unc
 
 Two things this showed. With a refused connection each failing page load took about 0.6 s, not 8.1 s: the 8.1 s worst case is for timeouts, where every try waits the full 2.5 s. And my drill script had a bug that this drill exposed, recorded in `INTEGRATION_LOG.md` (row 7): it printed any HTTP 200 as LIVE, so for about 20 s after 14:53:50 it showed saved copies as live data. It now prints SAVED, LIVE and DEGRADED. The recovery time above comes from the fixed script.
 
-Still TODO: Kazi Connect's own drill against a test copy of Sherehe (it is running at `http://localhost:4101` for that), the drill on the live URLs, and a screenshot or recording of the saved-data notice with the partner stopped (the team).
+### The other direction: Kazi Connect's drill against a test copy of Sherehe
+
+Kazi Connect is our consumer, so I was the partner that stopped. A separate test copy of Sherehe (port 4101, same build) was stopped at 14:56:18Z and started again at 14:56:38Z (about 20 s). Kazi Connect's account, in its own words and numbers: it read at 14:56:25Z and got **its saved list** (HTTP 200 in 0.63 s, 10 openings, its header `X-Data-Saved-At: 14:50:52Z`) after **2 retries** (ECONNREFUSED, 200 ms then 400 ms in its log); a county it had never read gave **its own 502** in 0.61 s; its jobs endpoint kept answering 200. At 14:56:44Z it read our restarted copy: every county answered 200 in 0.019 s with no `X-Data-Saved-At` header, so live, and it changed nothing on its side. Its counters for the drill: 4 retries, saved data served once. The Week 11 drill is complete from its side. Our log shows nothing about this yet: we log no requests until Week 12.
+
+Still TODO: the drill on the live URLs, and a screenshot or recording of the saved-data notice with the partner stopped (the team).
 
 ## Checks
 
