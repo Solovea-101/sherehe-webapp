@@ -313,7 +313,17 @@ paths:
           schema: { type: string, example: Nairobi }
       responses:
         '200':
-          description: Matching courses; an empty array when nothing matches
+          description: >
+            Matching courses; an empty array when nothing matches. When Ujuzi cannot be reached, this is a saved
+            copy of the last good answer to the same question (kept in memory, up to an hour old) and the two
+            headers below are present. A live answer carries neither header. The body is a bare array either way.
+          headers:
+            X-Data-Stale:
+              description: Present, with the value true, only when the list is a saved copy
+              schema: { type: string, enum: ['true'], example: 'true' }
+            X-Data-As-Of:
+              description: When the saved copy was fetched (UTC, ending in Z, no milliseconds). Present only with X-Data-Stale
+              schema: { type: string, format: date-time, example: '2026-11-05T14:24:11Z' }
           content:
             application/json:
               schema:

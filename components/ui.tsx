@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
+import { formatEat } from './time';
 
 const cx = (...parts: Array<string | false | undefined>) => parts.filter(Boolean).join(' ');
 
@@ -159,6 +160,22 @@ export function PartnerDegraded({ message, onRetry }: { message: string; onRetry
           Try again
         </Button>
       )}
+    </div>
+  );
+}
+
+/**
+ * The list on this page is a saved copy, because Ujuzi did not answer. It says so and when the copy is from,
+ * so nobody mistakes it for live data. Not an error: the page still works from what it has.
+ */
+export function SavedDataNotice({ asOf }: { asOf: string }) {
+  return (
+    <div role="status" className="rounded-md border-2 border-warn-border bg-warn-bg px-4 py-3 text-sm text-warn-text">
+      <p className="flex items-start gap-2 font-bold">
+        <span aria-hidden="true">◷</span>
+        <span>Showing the courses saved at {formatEat(asOf)}</span>
+      </p>
+      <p className="mt-1">Ujuzi is not responding right now, so this list may be out of date, and booking may not work until it is back.</p>
     </div>
   );
 }
