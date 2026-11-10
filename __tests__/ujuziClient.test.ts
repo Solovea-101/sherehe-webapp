@@ -4,6 +4,7 @@ import {
 import {
   cancelBooking, createBooking, getBooking, getCertificate, listCourses, updateBooking,
 } from '@/lib/clients/ujuziClient';
+import { createServer } from 'node:net';
 import { startUjuziStub, type UjuziStub } from './helpers/ujuziStub';
 
 let stub: UjuziStub;
@@ -226,6 +227,31 @@ describe('when Ujuzi misbehaves, every call fails the same way: PartnerUnavailab
     }
   });
 
+  it('says WHY in the log message: ECONNREFUSED when nothing is listening, ENOTFOUND when the host name is wrong', async () => {
+    // A port that was free a moment ago: nothing listens there, so the connection is refused.
+    const probe = createServer();
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const { port } = probe.address() as { port: number };
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    process.env.UJUZI_API_URL = `http://127.0.0.1:${port}`;
+    await expect(listCourses()).rejects.toEqual(unavailable(/could not be reached \(ECONNREFUSED\)/));
+
+    // A wrong host name fails the same way with a different code. Mocked, so the test needs no DNS.
+    const refused = Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' }) });
+    jest.spyOn(globalThis, 'fetch').mockRejectedValueOnce(refused);
+    await expect(listCourses()).rejects.toEqual(unavailable(/could not be reached \(ENOTFOUND\)/));
+  });
+
+  it('keeps nothing but a short upper-case code from the error, and never the key or the address', async () => {
+    process.env.UJUZI_API_KEY = 'secret-key-123';
+    const odd = Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('boom'), { code: 'connect to 10.0.0.5 with secret-key-123' }) });
+    jest.spyOn(globalThis, 'fetch').mockRejectedValueOnce(odd);
+    const error = await listCourses().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PartnerUnavailableError);
+    expect((error as Error).message).toBe('Ujuzi could not be reached');
+    expect((error as Error).message).not.toContain('secret-key-123');
+  });
+
   it('when Ujuzi limits us with a 429 (Ujuzi 0.3.0), every call fails as unavailable and carries Retry-After', async () => {
     stub.mode = 'rateLimited'; // Retry-After: 30
     for (const [name, run] of calls) {
@@ -242,7 +268,7 @@ describe('when Ujuzi misbehaves, every call fails the same way: PartnerUnavailab
     stub.mode = 'slow';
     stub.slowMs = 1500;
     const started = Date.now();
-    await expect(listCourses()).rejects.toEqual(unavailable(/did not answer in time/));
+    await expect(listCourses()).rejects.toEqual(unavailable(/did not answer in time \(gave up after 150 ms\)/));
     expect(Date.now() - started).toBeLessThan(1000);
   });
 

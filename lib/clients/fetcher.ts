@@ -79,6 +79,17 @@ export function clearPartnerCache(): void {
   cache.clear();
 }
 
+/**
+ * The system error code behind a failed fetch, as a log suffix: " (ECONNREFUSED)" means nothing is
+ * listening at that address, " (ENOTFOUND)" means the host name is wrong. Only a short upper-case code is
+ * kept, so nothing else from the error (an address, a path, a header) can reach a log line.
+ */
+function causeCode(err: unknown): string {
+  const cause = typeof err === 'object' && err !== null && 'cause' in err ? (err as { cause: unknown }).cause : undefined;
+  const code = typeof cause === 'object' && cause !== null && 'code' in cause ? (cause as { code: unknown }).code : undefined;
+  return typeof code === 'string' && /^[A-Z][A-Z0-9_]{2,40}$/.test(code) ? ` (${code})` : '';
+}
+
 function timeoutMs(background: boolean): number {
   // UJUZI_TIMEOUT_MS lets tests (and an operator) shorten both timeouts.
   const override = Number(process.env.UJUZI_TIMEOUT_MS);
@@ -99,6 +110,7 @@ export async function partnerFetch(req: PartnerRequest): Promise<PartnerResponse
   }
 
   const unavailable = (why: string) => new PartnerUnavailableError(req.partner, `${req.partner} ${why}`);
+  const limitMs = timeoutMs(req.background ?? false);
   let res: Response;
   try {
     res = await fetch(req.url, {
@@ -106,13 +118,14 @@ export async function partnerFetch(req: PartnerRequest): Promise<PartnerResponse
       headers: { Accept: 'application/json', ...(req.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...req.headers },
       body: req.body === undefined ? undefined : JSON.stringify(req.body),
       redirect: 'manual',
-      signal: AbortSignal.timeout(timeoutMs(req.background ?? false)),
+      signal: AbortSignal.timeout(limitMs),
     });
   } catch (err) {
     // By name, not instanceof: the abort error comes from the runtime, and under Jest that is a
     // different realm, so instanceof Error would be false even for a genuine timeout.
     const name = typeof err === 'object' && err !== null && 'name' in err ? String((err as { name: unknown }).name) : '';
-    throw unavailable(name === 'TimeoutError' || name === 'AbortError' ? 'did not answer in time' : 'could not be reached');
+    // The reason goes in the message, which only the log sees: our own clients get the fixed 502 text.
+    throw unavailable(name === 'TimeoutError' || name === 'AbortError' ? `did not answer in time (gave up after ${limitMs} ms)` : `could not be reached${causeCode(err)}`);
   }
 
   if (res.status >= 300 && res.status < 400) throw unavailable(`answered with a redirect (${res.status}); check its URL setting`);
