@@ -135,6 +135,24 @@ describe('the training page', () => {
     expect(screen.getByText(/Crew of 6/)).toBeInTheDocument(); // still there
   });
 
+  it('shows a saved copy of the courses with a notice saying when it is from, and never as if it were live', async () => {
+    installFetch({
+      ...base(),
+      'GET /api/training-options': () => ({ body: [course], headers: { 'X-Data-Stale': 'true', 'X-Data-As-Of': '2026-11-05T14:24:11Z' } }),
+    });
+    show();
+    expect(await screen.findByText('Food hygiene and event service')).toBeInTheDocument(); // the saved list is shown
+    expect(screen.getByText('Showing the courses saved at Thu 5 Nov 2026, 17:24 EAT')).toBeInTheDocument(); // 14:24 UTC is 17:24 in Nairobi
+    expect(screen.getByText(/may be out of date, and booking may not work until it is back/)).toBeInTheDocument();
+  });
+
+  it('shows no notice when the courses are live', async () => {
+    installFetch(base());
+    show();
+    await screen.findByText('Food hygiene and event service');
+    expect(screen.queryByText(/saved at/)).not.toBeInTheDocument();
+  });
+
   it('filters the courses by kind of work and county', async () => {
     const { calls } = installFetch(base());
     show();

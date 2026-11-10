@@ -73,6 +73,29 @@ No entry from the team yet. TODO, same rule.
 - **Needs the humans:** issuing Kazi its key, setting `PARTNER_KEYS` and `REQUIRE_PARTNER_KEY=true` in Render, setting `UJUZI_API_KEY` there (once Ujuzi issues one), and telling Kazi's sub-team **before** this is deployed (R8): Kazi must start sending `X-API-Key` on endpoints 1-6.
 - **`npm run ring:check` (R9)** is built. Its report was only ever run against local copies; the real run needs the live URLs and keys. See HELD_ISSUES.md, H2, H3 and H8.
 
+## Ujuzi's contract 0.5.0 reviewed, not adopted yet (2026-11-10)
+
+This is about the contract Sherehe consumes, not ours. `info.version` of Sherehe's own `openapi.yaml` is unchanged (0.1.0).
+
+- **What was reviewed:** Ujuzi's session told us its contract is 0.5.0 on its own branch (a new `GET /api/stats` and our two stale-data header names, documented). It is a note, not a hand-off: nothing is deployed and the team has not yet told our sub-team formally.
+- **What was found, by comparing the files in full:** every operation and schema Sherehe uses is **identical** in 0.4.0 and 0.5.0: `GET /api/courses`, `GET /api/courses/{courseId}`, `GET /api/certificates/{certificateNo}`, `POST /api/bookings`, and `GET`, `PUT` and `DELETE /api/bookings/{bookingId}`, with the schemas `Course`, `CertificateCheck`, `NewBooking`, `Booking`, `BookingUpdate` and `Error`. The only new path is `GET /api/stats`, and the security schemes are the same. None of S1 to S5 changes.
+- **Decision (taken on the team's behalf, 2026-11-10):** Sherehe has no objection, and told Ujuzi's session so. Whether Ujuzi ships its own change is its team's decision. Sherehe copies the file into `partner-tests/ujuzi_openapi.yaml` and regenerates `types/ujuzi.d.ts` only when Ujuzi formally hands it over or deploys it, because a file on an unreleased branch can still change. Until then the client and the partner tests stay on 0.4.0, which is what they were written and tested against.
+
+## `GET /api/stats` is not in the contract, on purpose (2026-11-10, Week 12)
+
+Notes from the coding agent. Week 12 adds an operations endpoint, `GET /api/stats` (running totals of requests, errors and times, and how often calls to Ujuzi needed retries or a saved copy). It needs a partner key. It is documented in the README ("Monitoring") and is deliberately **not** in `openapi.yaml`: the Week 12 handout asks for it in the README, it serves no need in `API_NEEDS.md`, and putting it in the contract would be a change to announce to Kazi Connect before deploying (R8). The partner endpoints K1 to K5 are unchanged. Ujuzi's session put its own `GET /api/stats` in its contract (0.5.0 on its branch); that is its choice, and either is defensible. If the team prefers it in the contract, it is a small addition to `openapi.yaml` and `types/api.d.ts` and an `info.version` bump.
+
+## A saved copy of the course list, flagged by two headers (2026-11-10, Week 11)
+
+Notes from the coding agent. `openapi.yaml` has still not been handed off, so `info.version` stays 0.1.0; this is the list to tell Kazi Connect when it is. None of it touches the partner endpoints Kazi Connect calls (K1 to K5).
+
+- **`GET /api/training-options` (website endpoint, need S1).** When Ujuzi cannot be reached, the 200 answer may now be a saved copy of the last good answer to the same question (kept in memory, up to an hour old). It carries two new response headers, and only then: `X-Data-Stale: true` and `X-Data-As-Of: <UTC time, ending in Z, no milliseconds>`. A live answer carries neither. The body is still a bare array, so no client that ignores the headers is affected. Documented in `openapi.yaml` under that 200 response; `types/api.d.ts` regenerated.
+- **The header names were agreed with Ujuzi's session on 2026-11-05.** Ujuzi planned the same pair for its own `GET /api/courses/{courseId}/job-matches`. Its change is not in its contract yet; it needs the user's approval, and Ujuzi will tell us before it deploys. Sherehe does not call that endpoint.
+- **CORS now exposes the headers** (`Access-Control-Expose-Headers: Location, Retry-After, X-Data-Stale, X-Data-As-Of`) on every `/api` response, so a browser page can read them. Without it, a browser would hide them.
+- **Only the course list is ever served as a saved copy.** A certificate check never is: a stale "valid" could be wrong. Bookings are read from our own database, and writes are never retried or saved.
+- **Behaviour changes in how Sherehe calls Ujuzi** (not in the contract, but worth knowing): each try now gives up after 2.5 s for a person (it was 10 s in total); a failed read a person is waiting for is tried up to 2 more times, 200 ms then 400 ms apart, or after the `Retry-After` the partner asked for when that is 5 s or less; never for 400, 401, 403 or 404, never for a write, and never for the background booking check (still 60 s, still asked again next round). Worst case before our own 502: 3 x 2.5 s + 200 ms + 400 ms = 8.1 s. Our own 502 text did not change. A refused key (Ujuzi's 401) is logged but not retried.
+- **Checked:** typecheck; new tests for each rule in `ujuziClient.test.ts` (the three that matter most were checked by breaking the code and seeing a test fail), for the headers and the 502 in `trainings.test.ts`, and for the notice in the web tests; `npm run verify`. Not yet checked against a deployed Ujuzi.
+
 ## `include=roles` on the events list (2026-10-28)
 
 Requested by Kazi Connect's agent, who said it will use it (1 call instead of 1+N) and keep the existing calls as a fallback. `openapi.yaml` has not been handed off, so `info.version` stays 0.1.0, but this is the change Kazi must be told about when it is.

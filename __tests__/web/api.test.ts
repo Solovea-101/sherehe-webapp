@@ -34,6 +34,26 @@ describe('the saved login token', () => {
   });
 });
 
+describe('api() and a saved copy (Week 11)', () => {
+  const asOf = '2026-11-05T14:24:11Z';
+  it('reports a saved copy when the server flags it, with when it was saved', async () => {
+    installFetch({ 'GET /api/training-options': () => ({ body: [], headers: { 'X-Data-Stale': 'true', 'X-Data-As-Of': asOf } }) });
+    expect(await api('/api/training-options')).toEqual({ ok: true, status: 200, data: [], stale: { asOf } });
+  });
+
+  it.each([
+    ['no headers at all', {}],
+    ['a stale flag with no time', { 'X-Data-Stale': 'true' }],
+    ['a time with no flag', { 'X-Data-As-Of': asOf }],
+    ['a flag that is not "true"', { 'X-Data-Stale': 'false', 'X-Data-As-Of': asOf }],
+    ['a time that is not a date', { 'X-Data-Stale': 'true', 'X-Data-As-Of': 'yesterday-ish' }],
+  ])('does NOT call it a saved copy with %s', async (_label, headers) => {
+    installFetch({ 'GET /api/training-options': () => ({ body: [], headers }) });
+    const res = await api('/api/training-options');
+    expect(res).toEqual({ ok: true, status: 200, data: [] });
+  });
+});
+
 describe('api()', () => {
   it('sends the saved token as a Bearer token, unless asked not to', async () => {
     setToken('tok');

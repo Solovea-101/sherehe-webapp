@@ -1,9 +1,11 @@
 import {
-  BACKGROUND_TIMEOUT_MS, CACHE_TTL_MS, PartnerRateLimitedError, PartnerRejectedError, PartnerUnavailableError, USER_TIMEOUT_MS, clearPartnerCache,
+  BACKGROUND_TIMEOUT_MS, CACHE_TTL_MS, PartnerRateLimitedError, PartnerRejectedError, PartnerUnavailableError, STALE_MAX_AGE_MS, USER_TIMEOUT_MS,
+  clearPartnerCache,
 } from '@/lib/clients/fetcher';
 import {
-  cancelBooking, createBooking, getBooking, getCertificate, listCourses, updateBooking,
+  cancelBooking, createBooking, getBooking, getCertificate, listCourses, listCoursesWithFreshness, updateBooking,
 } from '@/lib/clients/ujuziClient';
+import { createServer } from 'node:net';
 import { startUjuziStub, type UjuziStub } from './helpers/ujuziStub';
 
 let stub: UjuziStub;
@@ -21,6 +23,8 @@ beforeEach(() => {
   process.env.UJUZI_API_URL = stub.url;
   process.env.UJUZI_API_KEY = '';
   delete process.env.UJUZI_TIMEOUT_MS;
+  delete process.env.UJUZI_RETRIES;
+  process.env.UJUZI_RETRY_DELAY_MS = '5';
 });
 afterEach(() => jest.restoreAllMocks());
 
@@ -226,6 +230,31 @@ describe('when Ujuzi misbehaves, every call fails the same way: PartnerUnavailab
     }
   });
 
+  it('says WHY in the log message: ECONNREFUSED when nothing is listening, ENOTFOUND when the host name is wrong', async () => {
+    // A port that was free a moment ago: nothing listens there, so the connection is refused.
+    const probe = createServer();
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const { port } = probe.address() as { port: number };
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    process.env.UJUZI_API_URL = `http://127.0.0.1:${port}`;
+    await expect(listCourses()).rejects.toEqual(unavailable(/could not be reached \(ECONNREFUSED\)/));
+
+    // A wrong host name fails the same way with a different code. Mocked, so the test needs no DNS.
+    const refused = Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' }) });
+    jest.spyOn(globalThis, 'fetch').mockRejectedValue(refused); // every attempt, so the retries do not rescue it
+    await expect(listCourses()).rejects.toEqual(unavailable(/could not be reached \(ENOTFOUND\)/));
+  });
+
+  it('keeps nothing but a short upper-case code from the error, and never the key or the address', async () => {
+    process.env.UJUZI_API_KEY = 'secret-key-123';
+    const odd = Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('boom'), { code: 'connect to 10.0.0.5 with secret-key-123' }) });
+    jest.spyOn(globalThis, 'fetch').mockRejectedValue(odd);
+    const error = await listCourses().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PartnerUnavailableError);
+    expect((error as Error).message).toBe('Ujuzi could not be reached');
+    expect((error as Error).message).not.toContain('secret-key-123');
+  });
+
   it('when Ujuzi limits us with a 429 (Ujuzi 0.3.0), every call fails as unavailable and carries Retry-After', async () => {
     stub.mode = 'rateLimited'; // Retry-After: 30
     for (const [name, run] of calls) {
@@ -242,16 +271,16 @@ describe('when Ujuzi misbehaves, every call fails the same way: PartnerUnavailab
     stub.mode = 'slow';
     stub.slowMs = 1500;
     const started = Date.now();
-    await expect(listCourses()).rejects.toEqual(unavailable(/did not answer in time/));
+    await expect(listCourses()).rejects.toEqual(unavailable(/did not answer in time \(gave up after 150 ms\)/));
     expect(Date.now() - started).toBeLessThan(1000);
   });
 
-  it('uses 10 seconds when a person is waiting and 60 in the background', async () => {
-    expect(USER_TIMEOUT_MS).toBe(10_000);
+  it('uses 2.5 seconds an attempt when a person is waiting and 60 in the background', async () => {
+    expect(USER_TIMEOUT_MS).toBe(2_500);
     expect(BACKGROUND_TIMEOUT_MS).toBe(60_000);
     const timeout = jest.spyOn(AbortSignal, 'timeout');
     await listCourses();
-    expect(timeout).toHaveBeenLastCalledWith(10_000);
+    expect(timeout).toHaveBeenLastCalledWith(2_500);
     await getBooking('bkg_1', { background: true });
     expect(timeout).toHaveBeenLastCalledWith(60_000);
   });
@@ -284,5 +313,187 @@ describe('when Ujuzi misbehaves, every call fails the same way: PartnerUnavailab
     await expect(listCourses()).rejects.toThrow(PartnerUnavailableError);
     stub.mode = 'ok';
     expect(await listCourses()).toHaveLength(4);
+  });
+});
+
+// ---- Week 11: timeout, retries and the saved copy ------------------------------------------------
+
+describe('retries: only where trying again can help', () => {
+  const warnings = () => jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+  it('tries a failing read 3 times in all (2 retries) and then gives up with our usual error', async () => {
+    const warn = warnings();
+    stub.mode = 'error500';
+    await expect(listCourses()).rejects.toEqual(unavailable(/failed with status 500/));
+    expect(stub.calls).toHaveLength(3);
+    expect(warn.mock.calls.filter(([m]) => /trying again in/.test(String(m)))).toHaveLength(2); // two retries, then it stops
+  });
+
+  it('succeeds when Ujuzi fails twice and then works, and the caller never sees a failure', async () => {
+    const warn = warnings();
+    stub.mode = 'flaky'; // 503, 503, then fine
+    expect(await listCourses()).toHaveLength(4);
+    expect(stub.calls).toHaveLength(3);
+    expect(warn.mock.calls.map(([m]) => String(m)).join('\n')).toMatch(/failed with status 503; attempt 1 of 3/);
+  });
+
+  it('retries a timeout and a refused connection too', async () => {
+    warnings();
+    process.env.UJUZI_TIMEOUT_MS = '80';
+    stub.mode = 'slow';
+    stub.slowMs = 1500;
+    await expect(listCourses()).rejects.toEqual(unavailable(/did not answer in time/));
+    expect(stub.calls).toHaveLength(3);
+    stub.reset();
+    stub.mode = 'down'; // the socket is dropped: a failed connection
+    await expect(listCourses()).rejects.toEqual(unavailable(/could not be reached/));
+    expect(stub.calls).toHaveLength(3);
+  });
+
+  it('does NOT retry a refused key, a bad request or a missing thing: asking again changes nothing', async () => {
+    warnings();
+    stub.mode = 'unauthorized';
+    await expect(listCourses()).rejects.toEqual(unavailable(/refused our API key/));
+    expect(stub.calls).toHaveLength(1);
+    stub.reset();
+    expect(await getCertificate('UJZ-0000-00000')).toBeNull(); // 404
+    expect(stub.calls).toHaveLength(1);
+    stub.reset();
+    expect(await getBooking('bkg_9999')).toBeNull(); // 404: Ujuzi no longer has it
+    expect(stub.calls).toHaveLength(1);
+  });
+
+  it('does NOT retry a write: a booking could be made twice', async () => {
+    warnings();
+    stub.mode = 'error500';
+    await expect(createBooking({ courseId: 'crs_501', crewSize: 2, preferredStart: inDays(9), eventName: 'E' })).rejects.toBeInstanceOf(PartnerUnavailableError);
+    await expect(updateBooking('bkg_6001', { crewSize: 2, preferredStart: inDays(9) })).rejects.toBeInstanceOf(PartnerUnavailableError);
+    await expect(cancelBooking('bkg_6001')).rejects.toBeInstanceOf(PartnerUnavailableError);
+    expect(stub.calls.map((c) => c.method)).toEqual(['POST', 'PUT', 'DELETE']); // one try each
+  });
+
+  it('does NOT retry the background check: it asks again next round, and waits up to a minute anyway', async () => {
+    warnings();
+    stub.mode = 'error500';
+    await expect(getBooking('bkg_6001', { background: true })).rejects.toBeInstanceOf(PartnerUnavailableError);
+    expect(stub.calls).toHaveLength(1);
+  });
+
+  it('waits the 200 ms and then 400 ms the handout asks for (doubling), and never loops', async () => {
+    const warn = warnings();
+    delete process.env.UJUZI_RETRY_DELAY_MS; // the real defaults
+    stub.mode = 'error500';
+    const started = Date.now();
+    await expect(listCourses()).rejects.toBeInstanceOf(PartnerUnavailableError);
+    const lines = warn.mock.calls.map(([m]) => String(m));
+    expect(lines.some((l) => /attempt 1 of 3, trying again in 200 ms/.test(l))).toBe(true);
+    expect(lines.some((l) => /attempt 2 of 3, trying again in 400 ms/.test(l))).toBe(true);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(590);
+    expect(stub.calls).toHaveLength(3);
+  });
+
+  it('can be tuned with UJUZI_RETRIES, and 0 switches retries off', async () => {
+    warnings();
+    stub.mode = 'error500';
+    process.env.UJUZI_RETRIES = '0';
+    await expect(listCourses()).rejects.toBeInstanceOf(PartnerUnavailableError);
+    expect(stub.calls).toHaveLength(1);
+    stub.reset();
+    stub.mode = 'error500';
+    process.env.UJUZI_RETRIES = '1';
+    await expect(listCourses()).rejects.toBeInstanceOf(PartnerUnavailableError);
+    expect(stub.calls).toHaveLength(2);
+  });
+
+  it('on a 429 that asks for a short wait, waits that long and then succeeds', async () => {
+    warnings();
+    stub.mode = 'limitedOnce'; // 429 with Retry-After: 1, then fine
+    const started = Date.now();
+    expect(await listCourses()).toHaveLength(4);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(950);
+    expect(stub.calls).toHaveLength(2);
+  });
+
+  it('on a 429 that asks for a long wait (30 s), does not retry: a person will not wait that long', async () => {
+    warnings();
+    stub.mode = 'rateLimited'; // Retry-After: 30
+    const error: unknown = await listCourses().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PartnerRateLimitedError);
+    expect(stub.calls).toHaveLength(1);
+  });
+});
+
+describe('the saved copy: the last good list, flagged, for up to an hour', () => {
+  let now: number;
+  beforeEach(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    now = Date.now();
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+  });
+  const later = (ms: number) => { now += ms; };
+
+  it('a fresh answer carries no asOf; a remembered one (under 5 minutes) is not flagged either', async () => {
+    const first = await listCoursesWithFreshness();
+    expect(first).toEqual({ courses: expect.any(Array) });
+    expect(first.asOf).toBeUndefined();
+    later(CACHE_TTL_MS - 1000);
+    stub.mode = 'down';
+    const second = await listCoursesWithFreshness(); // from memory, Ujuzi is not asked
+    expect(second.asOf).toBeUndefined();
+    expect(stub.calls).toHaveLength(1);
+  });
+
+  it('when Ujuzi is down after the memory has expired, answers with the saved list and says when it was fetched', async () => {
+    const fetchedAt = new Date(now).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    await listCoursesWithFreshness({ category: 'catering' });
+    later(CACHE_TTL_MS + 60_000);
+    stub.mode = 'down';
+    const saved = await listCoursesWithFreshness({ category: 'catering' });
+    expect(saved.courses.length).toBeGreaterThan(0);
+    expect(saved.asOf).toBe(fetchedAt);
+    expect(saved.asOf).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/); // UTC, ending in Z, no milliseconds
+  });
+
+  it('comes back to live data by itself when Ujuzi recovers, with no asOf', async () => {
+    await listCoursesWithFreshness();
+    later(CACHE_TTL_MS + 1000);
+    stub.mode = 'down';
+    expect((await listCoursesWithFreshness()).asOf).toBeDefined();
+    stub.mode = 'ok';
+    expect((await listCoursesWithFreshness()).asOf).toBeUndefined();
+  });
+
+  it('does not serve a copy older than an hour: that would be a picture of another day', async () => {
+    await listCoursesWithFreshness();
+    later(STALE_MAX_AGE_MS + 1000);
+    stub.mode = 'down';
+    await expect(listCoursesWithFreshness()).rejects.toBeInstanceOf(PartnerUnavailableError);
+  });
+
+  it('serves nothing it never fetched: a different question has no saved copy', async () => {
+    await listCoursesWithFreshness({ category: 'catering' });
+    later(CACHE_TTL_MS + 1000);
+    stub.mode = 'down';
+    await expect(listCoursesWithFreshness({ category: 'security' })).rejects.toBeInstanceOf(PartnerUnavailableError);
+  });
+
+  it('listCourses, which cannot show a flag, never serves a saved copy', async () => {
+    await listCourses();
+    later(CACHE_TTL_MS + 1000);
+    stub.mode = 'down';
+    await expect(listCourses()).rejects.toBeInstanceOf(PartnerUnavailableError);
+  });
+
+  it('a certificate check is never saved: a stale "valid" could be wrong, so it fails instead', async () => {
+    expect((await getCertificate('UJZ-2026-00123'))?.valid).toBe(true);
+    stub.mode = 'down';
+    await expect(getCertificate('UJZ-2026-00123')).rejects.toBeInstanceOf(PartnerUnavailableError); // straight away, even within 5 minutes
+  });
+
+  it('a rate-limited Ujuzi also gets the saved copy', async () => {
+    await listCoursesWithFreshness();
+    later(CACHE_TTL_MS + 1000);
+    stub.mode = 'rateLimited';
+    expect((await listCoursesWithFreshness()).asOf).toBeDefined();
   });
 });

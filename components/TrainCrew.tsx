@@ -8,7 +8,7 @@ import { api } from './api';
 import { CategoryIcon } from './icons';
 import { money } from './RolesTable';
 import { eatInputToUtcIso, formatEat, nowAsEatInput } from './time';
-import { Button, EmptyState, Field, isPartnerMessage, Loading, Notice, PartnerDegraded, Select, TextInput } from './ui';
+import { Button, EmptyState, Field, isPartnerMessage, Loading, Notice, PartnerDegraded, SavedDataNotice, Select, TextInput } from './ui';
 
 type Event = components['schemas']['Event'];
 type Option = components['schemas']['TrainingOption'];
@@ -25,6 +25,7 @@ export function TrainCrew({ event }: { event: Event }) {
   const [category, setCategory] = useState('');
   const [options, setOptions] = useState<Option[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [savedAsOf, setSavedAsOf] = useState<string | null>(null);
   const [courseId, setCourseId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [booked, setBooked] = useState<Training | null>(null);
@@ -35,11 +36,14 @@ export function TrainCrew({ event }: { event: Event }) {
     let cancelled = false;
     setOptions(null);
     setLoadError(null);
+    setSavedAsOf(null);
     setCourseId('');
     void api<Option[]>(`/api/training-options${category ? `?category=${category}` : ''}`).then((res) => {
       if (cancelled) return;
-      if (res.ok) setOptions(res.data);
-      else setLoadError(res.message);
+      if (res.ok) {
+        setOptions(res.data);
+        setSavedAsOf(res.stale?.asOf ?? null);
+      } else setLoadError(res.message);
     });
     return () => {
       cancelled = true;
@@ -90,6 +94,7 @@ export function TrainCrew({ event }: { event: Event }) {
         </Select>
       </Field>
       {loadError && (isPartnerMessage(loadError) ? <PartnerDegraded message={loadError} onRetry={retry} /> : <Notice kind="error">{loadError}</Notice>)}
+      {savedAsOf && <SavedDataNotice asOf={savedAsOf} />}
       {!loadError && options === null && <Loading skeletons={2}>Loading courses from Ujuzi...</Loading>}
       {options && options.length === 0 && <EmptyState>No courses match. Try another kind of work.</EmptyState>}
       {options && options.length > 0 && (

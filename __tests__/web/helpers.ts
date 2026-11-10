@@ -8,7 +8,7 @@ export interface Call {
   authorization: string | null;
 }
 
-type Responder = (call: Call) => { status?: number; body?: unknown };
+type Responder = (call: Call) => { status?: number; body?: unknown; headers?: { [name: string]: string } };
 
 /**
  * Installs a fake fetch. `routes` maps "METHOD /path" (with or without the query string) to an
@@ -28,9 +28,10 @@ export function installFetch(routes: { [route: string]: Responder }): { calls: C
     calls.push(call);
     const responder = routes[`${method} ${path}`] ?? routes[`${method} ${path.split('?')[0]}`];
     if (!responder) throw new Error(`Unplanned request in a test: ${method} ${path}`);
-    const { status = 200, body } = responder(call);
+    const { status = 200, body, headers = {} } = responder(call);
     const text = body === undefined ? '' : JSON.stringify(body);
-    return { ok: status >= 200 && status < 300, status, text: async () => text };
+    const lower: { [name: string]: string } = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+    return { ok: status >= 200 && status < 300, status, text: async () => text, headers: { get: (name: string) => lower[name.toLowerCase()] ?? null } };
   };
   (globalThis as { fetch: unknown }).fetch = jest.fn(fake);
   return { calls };

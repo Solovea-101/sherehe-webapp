@@ -575,9 +575,13 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Matching courses; an empty array when nothing matches */
+                /** @description Matching courses; an empty array when nothing matches. When Ujuzi cannot be reached, this is a saved copy of the last good answer to the same question (kept in memory, up to an hour old) and the two headers below are present. A live answer carries neither header. The body is a bare array either way. */
                 200: {
                     headers: {
+                        /** @description Present, with the value true, only when the list is a saved copy */
+                        "X-Data-Stale"?: "true";
+                        /** @description When the saved copy was fetched (UTC, ending in Z, no milliseconds). Present only with X-Data-Stale */
+                        "X-Data-As-Of"?: string;
                         [name: string]: unknown;
                     };
                     content: {
