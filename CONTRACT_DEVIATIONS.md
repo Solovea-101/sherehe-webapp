@@ -73,6 +73,14 @@ No entry from the team yet. TODO, same rule.
 - **Needs the humans:** issuing Kazi its key, setting `PARTNER_KEYS` and `REQUIRE_PARTNER_KEY=true` in Render, setting `UJUZI_API_KEY` there (once Ujuzi issues one), and telling Kazi's sub-team **before** this is deployed (R8): Kazi must start sending `X-API-Key` on endpoints 1-6.
 - **`npm run ring:check` (R9)** is built. Its report was only ever run against local copies; the real run needs the live URLs and keys. See HELD_ISSUES.md, H2, H3 and H8.
 
+## Ujuzi's contract 0.5.0 reviewed, not adopted yet (2026-11-10)
+
+This is about the contract Sherehe consumes, not ours. `info.version` of Sherehe's own `openapi.yaml` is unchanged (0.1.0).
+
+- **What was reviewed:** Ujuzi's session told us its contract is 0.5.0 on its own branch (a new `GET /api/stats` and our two stale-data header names, documented). It is a note, not a hand-off: nothing is deployed and the team has not yet told our sub-team formally.
+- **What was found, by comparing the files in full:** every operation and schema Sherehe uses is **identical** in 0.4.0 and 0.5.0: `GET /api/courses`, `GET /api/courses/{courseId}`, `GET /api/certificates/{certificateNo}`, `POST /api/bookings`, and `GET`, `PUT` and `DELETE /api/bookings/{bookingId}`, with the schemas `Course`, `CertificateCheck`, `NewBooking`, `Booking`, `BookingUpdate` and `Error`. The only new path is `GET /api/stats`, and the security schemes are the same. None of S1 to S5 changes.
+- **Decision (taken on the team's behalf, 2026-11-10):** Sherehe has no objection, and told Ujuzi's session so. Whether Ujuzi ships its own change is its team's decision. Sherehe copies the file into `partner-tests/ujuzi_openapi.yaml` and regenerates `types/ujuzi.d.ts` only when Ujuzi formally hands it over or deploys it, because a file on an unreleased branch can still change. Until then the client and the partner tests stay on 0.4.0, which is what they were written and tested against.
+
 ## `GET /api/stats` is not in the contract, on purpose (2026-11-10, Week 12)
 
 Notes from the coding agent. Week 12 adds an operations endpoint, `GET /api/stats` (running totals of requests, errors and times, and how often calls to Ujuzi needed retries or a saved copy). It needs a partner key. It is documented in the README ("Monitoring") and is deliberately **not** in `openapi.yaml`: the Week 12 handout asks for it in the README, it serves no need in `API_NEEDS.md`, and putting it in the contract would be a change to announce to Kazi Connect before deploying (R8). The partner endpoints K1 to K5 are unchanged. Ujuzi's session put its own `GET /api/stats` in its contract (0.5.0 on its branch); that is its choice, and either is defensible. If the team prefers it in the contract, it is a small addition to `openapi.yaml` and `types/api.d.ts` and an `info.version` bump.

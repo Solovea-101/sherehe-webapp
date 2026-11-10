@@ -9,6 +9,8 @@ The handout asks for these **before** any data. They are the team's to write, an
 - Which endpoint do you think will be the slowest, and why? TODO (team)
 - Which do you think will produce the most errors, and why? TODO (team)
 
+**Why these are still empty, and how to fill them honestly.** A prediction only counts if it is made before the data, and the numbers in section 2 and 3 were already seen when this file was written. The coding agent has not written predictions after the fact, because that would be a record of something that did not happen. The team can still do the exercise properly on the **next** run: when the colleagues' live deployment is ready, write the two predictions here first (the live site runs on Render's free tier, so it is a different situation from this computer), then run `API=https://<sherehe>.onrender.com KEY=<a partner key> npm run traffic`, read `GET /api/stats`, and compare. Date each prediction when it is written.
+
 ## 2. What was recorded and how it was tested
 
 - **The log:** one JSON line per finished request, registered first so a 401 or 429 is logged. Part B, three requests (my key, a wrong key, no key), real lines:
@@ -37,7 +39,7 @@ The handout asks for these **before** any data. They are the team's to write, an
 
 ### Predicted against actual
 
-TODO (team): compare your Part A predictions with the table above.
+TODO (team): compare your Part A predictions with the table above, or better with the live run described under section 1.
 
 ### One real pattern, with figures
 
