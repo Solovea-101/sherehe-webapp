@@ -24,6 +24,7 @@
     "drill": "tsx scripts/partnerDrill.ts",
     "flaky": "tsx scripts/flakyUjuzi.ts",
     "traffic": "tsx scripts/traffic.ts",
+    "seed:ring": "tsx scripts/seedRing.ts",
     "partner:key": "tsx scripts/issuePartnerKey.ts",
     "db:migrate": "tsx lib/db/migrate.ts",
     "db:seed": "tsx lib/db/seed.ts"
