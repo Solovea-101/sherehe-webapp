@@ -74,7 +74,22 @@ A circuit breaker is a switch that stops calling a partner that has been failing
 
 ## Part E: the real partner
 
-Not done yet with the new behaviour. The earlier stop and start drill (2026-11-05, in `INTEGRATION_LOG.md`) was run with the Week 10 behaviour. The drill with the Week 11 behaviour against Ujuzi's build, and Kazi Connect's drill against a test copy of Sherehe, are TODO. A screenshot or recording of the fallback state with the partner intentionally stopped: TODO (the team).
+Ujuzi's session ran its build on `:4013` (the calls Sherehe makes, S1 to S5, unchanged) and stopped and restarted it on my word. My test copy of Sherehe used the Week 11 defaults. All times UTC, 2026-11-10; "reported" means Ujuzi's own report.
+
+| Time | What happened | What Sherehe did |
+|---|---|---|
+| 14:47:39 | One question asked live (catering in Nairobi), then a drill asking a new question every 2 s | Live answers, 3 to 18 ms |
+| 14:53:13 | Ujuzi stopped (reported), after the 5-minute memory had expired | |
+| 14:53:14 | | The drill changed to **DEGRADED** for questions never seen before: our friendly 502, 14 lines in a row, each 610 to 620 ms (three refused tries with the 200 ms and 400 ms pauses between them) |
+| 14:53:22 | I asked the 14:47:39 question again | **200 in 612 ms, a saved copy**, `X-Data-Stale: true`, `X-Data-As-Of: 2026-11-10T14:47:39Z`. Log: `Ujuzi could not be reached (ECONNREFUSED); answering with the saved copy from 2026-11-10T14:47:39Z` |
+| 14:53:22 | A certificate check | **502** in 618 ms, never a saved copy. `GET /api/events` and `GET /` answered 200 |
+| 14:53:34 | A question nobody had asked (plumbing in Wajir) | **502** in 609 ms, no stale header |
+| 14:54:24 | Ujuzi listening again (reported), about 71 s down, no code change | |
+| 14:54:30 | First confirmed live answer after it was back | **200, 5 ms, no stale header**. The same question that had been a saved copy was live again, with no change to our code |
+
+Two things this showed. With a refused connection each failing page load took about 0.6 s, not 8.1 s: the 8.1 s worst case is for timeouts, where every try waits the full 2.5 s. And my drill script had a bug that this drill exposed, recorded in `INTEGRATION_LOG.md` (row 7): it printed any HTTP 200 as LIVE, so for about 20 s after 14:53:50 it showed saved copies as live data. It now prints SAVED, LIVE and DEGRADED. The recovery time above comes from the fixed script.
+
+Still TODO: Kazi Connect's own drill against a test copy of Sherehe (it is running at `http://localhost:4101` for that), the drill on the live URLs, and a screenshot or recording of the saved-data notice with the partner stopped (the team).
 
 ## Checks
 

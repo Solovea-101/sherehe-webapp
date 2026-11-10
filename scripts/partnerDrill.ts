@@ -2,9 +2,10 @@
  * The Week 10 demo drill, as one command: `npm run drill`.
  *
  * Calls Sherehe's own GET /api/training-options (which reads Ujuzi on the server) every couple of
- * seconds and prints one line each time. Run it, then have Ujuzi stop and restart, and watch the three
- * steps the handout asks you to rehearse: live data, then our friendly message while Ujuzi is down,
- * then live data again, with no change to our code.
+ * seconds and prints one line each time. Run it, then have Ujuzi stop and restart, and watch the steps
+ * the handout asks you to rehearse: live data, then (while Ujuzi is down) a SAVED copy of an answer
+ * Sherehe has seen before, or our friendly message for a question it has not, then live data again,
+ * with no change to our code. The three states are LIVE, SAVED and DEGRADED.
  *
  *   SHEREHE_URL        our server (default http://localhost:3000)
  *   DRILL_EMAIL, DRILL_PASSWORD
@@ -25,7 +26,7 @@ const base = (process.env.SHEREHE_URL ?? 'http://localhost:3000').replace(/\/+$/
 const everyMs = Number(process.env.DRILL_EVERY_MS) > 0 ? Number(process.env.DRILL_EVERY_MS) : 2000;
 const rounds = Number(process.env.DRILL_ROUNDS) > 0 ? Number(process.env.DRILL_ROUNDS) : Infinity;
 
-interface Reply { status: number; body: unknown }
+interface Reply { status: number; body: unknown; stale: string | null }
 
 const fresh = process.env.DRILL_FRESH !== 'false';
 const CATEGORIES = ['catering', 'events', 'security', 'cleaning', 'accommodation', 'electrical', 'plumbing', 'tutoring', 'campus'];
@@ -48,7 +49,9 @@ async function send(method: string, path: string, token?: string, body?: unknown
   const text = await res.text();
   let parsed: unknown = text;
   try { parsed = JSON.parse(text); } catch { /* not JSON: keep the text */ }
-  return { status: res.status, body: parsed };
+  // A saved copy says so in X-Data-Stale and X-Data-As-Of (Week 11). The drill must not mistake it for live data.
+  const asOf = res.headers.get('x-data-as-of');
+  return { status: res.status, body: parsed, stale: res.headers.get('x-data-stale') === 'true' ? (asOf ?? 'an unknown time') : null };
 }
 
 const tokenOf = (body: unknown): string | undefined =>
@@ -85,7 +88,8 @@ async function main(): Promise<void> {
     try {
       const res = await send('GET', `/api/training-options?category=${q.category}&county=${encodeURIComponent(q.county)}`, token);
       const ms = Date.now() - t0;
-      if (res.status === 200 && Array.isArray(res.body)) { state = 'LIVE'; line = `${res.body.length} course(s) from Ujuzi for ${q.category} in ${q.county}`; }
+      if (res.status === 200 && Array.isArray(res.body) && res.stale) { state = 'SAVED'; line = `a SAVED COPY from ${res.stale}: ${res.body.length} course(s) for ${q.category} in ${q.county}`; }
+      else if (res.status === 200 && Array.isArray(res.body)) { state = 'LIVE'; line = `${res.body.length} course(s) from Ujuzi for ${q.category} in ${q.county}`; }
       else { state = 'DEGRADED'; line = `the user sees: "${messageOf(res.body)}"`; }
       console.log(`${new Date().toISOString().slice(11, 19)}  HTTP ${res.status}  ${String(ms).padStart(5)} ms  ${state.padEnd(8)} ${line}`);
     } catch (err) {
